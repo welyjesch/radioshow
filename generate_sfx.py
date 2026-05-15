@@ -1,11 +1,12 @@
 # /// script
+# requires-python = "==3.12.*"
 # dependencies = [
 #     "diffusers==0.27.2",
 #     "transformers==4.38.2",
-#     "huggingface-hub<0.21.0",
-#     "accelerate",
+#     "huggingface-hub==0.20.3",
+#     "accelerate==0.28.0",
 #     "torch",
-#     "scipy",
+#     "scipy==1.13.0",
 # ]
 # ///
 
