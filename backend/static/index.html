@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Concatenator</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; background: #1a1a2e; color: #eee; }
+        h1 { margin-bottom: 20px; }
+        .sequence-group { margin-bottom: 24px; background: #16213e; border-radius: 8px; padding: 16px; }
+        .sequence-header { font-size: 18px; font-weight: bold; margin-bottom: 12px; color: #e94560; }
+        .file-list { display: flex; flex-direction: column; gap: 8px; }
+        .file-item { display: flex; align-items: center; gap: 12px; padding: 10px; background: #0f3460; border-radius: 6px; }
+        .file-item input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+        .file-item label { flex: 1; cursor: pointer; }
+        .file-item .duration { color: #888; font-size: 14px; }
+        .audio-player { width: 100%; margin-top: 8px; }
+        .controls { margin-top: 20px; padding: 16px; background: #16213e; border-radius: 8px; }
+        .controls label { display: block; margin-bottom: 8px; }
+        .controls input[type="number"] { width: 80px; padding: 8px; border-radius: 4px; border: none; margin-right: 16px; }
+        .controls button { padding: 10px 24px; background: #e94560; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; }
+        .controls button:hover { background: #d63d56; }
+        .controls button:disabled { background: #555; cursor: not-allowed; }
+        .output-section { margin-top: 20px; padding: 16px; background: #16213e; border-radius: 8px; }
+        .output-section audio { width: 100%; margin-top: 12px; }
+        .error { color: #ff6b6b; margin-top: 12px; }
+        .loading { color: #888; }
+    </style>
+</head>
+<body>
+    <h1>🎙️ Audio Concatenator</h1>
+    <div id="app">
+        <p class="loading">Loading audio files...</p>
+    </div>
+
+    <script>
+        const API_BASE = '';
+        let selectedFiles = [];
+        let outputFile = null;
+
+        async function loadFiles() {
+            try {
+                const res = await fetch(`${API_BASE}/api/files`);
+                const data = await res.json();
+                renderFiles(data);
+            } catch (e) {
+                document.getElementById('app').innerHTML = `<p class="error">Error loading files: ${e.message}</p>`;
+            }
+        }
+
+        function renderFiles(filesBySeq) {
+            if (!filesBySeq.length) {
+                document.getElementById('app').innerHTML = '<p>No audio files found in generated_audio/</p>';
+                return;
+            }
+
+            let html = '';
+            filesBySeq.forEach(seq => {
+                html += `<div class="sequence-group">
+                    <div class="sequence-header">Sequence ${seq.sequence}</div>
+                    <div class="file-list">`;
+                seq.files.forEach(f => {
+                    html += `<div class="file-item">
+                        <input type="checkbox" id="${f.filename}" data-filename="${f.filename}" onchange="toggleFile(this)">
+                        <label for="${f.filename}">${f.label}</label>
+                        <span class="duration">${f.duration.toFixed(1)}s</span>
+                    </div>`;
+                });
+                html += `</div></div>`;
+            });
+
+            html += `<div class="controls">
+                <label>Silence between files (seconds): <input type="number" id="silence" value="0.5" min="0" max="10" step="0.1"></label>
+                <button onclick="concatenate()" id="concatBtn">Concatenate Selected</button>
+            </div>
+            <div class="output-section" id="output" style="display:none">
+                <h3>Output:</h3>
+                <audio id="outputPlayer" controls></audio>
+            </div>`;
+
+            document.getElementById('app').innerHTML = html;
+        }
+
+        function toggleFile(checkbox) {
+            const filename = checkbox.dataset.filename;
+            if (checkbox.checked) {
+                selectedFiles.push(filename);
+            } else {
+                selectedFiles = selectedFiles.filter(f => f !== filename);
+            }
+        }
+
+        async function concatenate() {
+            if (!selectedFiles.length) {
+                alert('Please select at least one file');
+                return;
+            }
+
+            const btn = document.getElementById('concatBtn');
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
+
+            const silence = parseFloat(document.getElementById('silence').value) || 0;
+            const list = [];
+            
+            selectedFiles.forEach((filename, i) => {
+                if (i > 0 && silence > 0) {
+                    list.push({ add_silence: silence });
+                }
+                list.push(filename);
+            });
+
+            try {
+                const res = await fetch(`${API_BASE}/api/concatenate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ list })
+                });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    outputFile = data.filename;
+                    const player = document.getElementById('outputPlayer');
+                    player.src = `${API_BASE}/api/audio/${encodeURIComponent(data.filename)}`;
+                    document.getElementById('output').style.display = 'block';
+                    player.play();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Concatenate Selected';
+            }
+        }
+
+        loadFiles();
+    </script>
+</body>
+</html>
