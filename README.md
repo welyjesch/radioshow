@@ -4,15 +4,18 @@ Generate dialogue and sound effects audio from a script file with emotion-based 
 
 ## Quick Start
 
+Due to dependency conflicts between the TTS and SFX models, the process is split into two stages.
+
+### Stage 1: Dialogue Generation
 ```bash
-# Generate single version of each segment
-uv run generate_audio.py sample_script.txt
+# Generate dialogue and create sfx_tasks.json
+uv run generate_audio.py sample_script.txt --output-dir my_audio
+```
 
-# Generate 3 versions of each segment (for quality control)
-uv run generate_audio.py sample_script.txt --gen-count 3
-
-# Specify output directory
-uv run generate_audio.py sample_script.txt -c 2 --output-dir my_audio
+### Stage 2: SFX Generation
+```bash
+# Generate SFX based on the tasks file created in Stage 1
+uv run generate_sfx.py --tasks-file my_audio/sfx_tasks.json --output-dir my_audio
 ```
 
 ## Script Format
@@ -63,21 +66,20 @@ If a speaker isn't in the mapping, the system will use the first reference voice
 
 Generated files use naming convention:
 ```
-<sequence>-<generation>_<speaker>_<text_summary>.wav
-<sequence>-<generation>_SFX_<description_summary>.wav
+<sequence>_<speaker>_<text_summary>.wav
+<sequence>_SFX_<description_summary>_<gen>.wav
 ```
 
 Examples:
-- `0001-01_NARRATOR_The story begins.wav`
-- `0001-02_NARRATOR_The story begins.wav` (second generation of same line)
-- `0002-01_SFX_explosion with deep.wav`
-- `0002-02_SFX_explosion with deep.wav` (alternate version)
+- `<0001-01>_NARRATOR_The story begins.wav`
+- `<0002-01>_SFX_explosion_with_deep_1.wav`
 
 **Sequence**: 4-digit counter across all segments (dialogue + SFX)
-**Generation**: 2-digit version number (01, 02, 03, etc.)
+**Generation**: Version number for SFX (1, 2, 3, etc.)
 
 ## Parameters
 
+### Dialogue Generation
 ```bash
 uv run generate_audio.py <script> [options]
 
@@ -89,6 +91,15 @@ Options:
   --output-dir, -o DIR  Output directory (default: generated_audio)
 ```
 
+### SFX Generation
+```bash
+uv run generate_sfx.py --tasks-file <path> --output-dir <path>
+
+Options:
+  --tasks-file          Path to sfx_tasks.json created by generate_audio.py
+  --output-dir          Directory to save generated SFX
+```
+
 ## How It Works
 
 1. **Parse Script**: Extracts speakers, dialogue, emotions, and SFX tags
@@ -96,8 +107,10 @@ Options:
    - Detects or uses explicit emotion
    - Maps emotion to TTS parameters (CFG weight, exaggeration, temperature)
    - Uses Chatterbox model with speaker voice reference
+   - Exports `sfx_tasks.json` for the SFX stage
 3. **SFX Generation**:
-   - Generates audio from text descriptions
+   - Reads `sfx_tasks.json`
+   - Generates audio from text descriptions using AudioLDM2
    - Uses AudioLDM2 diffusion model
    - Creates multiple versions by varying random seed
 4. **File Output**: 

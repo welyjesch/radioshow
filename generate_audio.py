@@ -7,10 +7,6 @@
 #     "numpy>=1.24.0,<2.0.0",
 #     "librosa==0.11.0",
 #     "s3tokenizer",
-#     "diffusers==0.29.0",
-#     "huggingface-hub==0.22.2",
-#     "accelerate==0.28.0",
-#     "scipy==1.13.0",
 #     "resemble-perth @ git+https://github.com/resemble-ai/Perth.git@master",
 #     "chatterbox-tts @ git+https://github.com/resemble-ai/chatterbox.git",
 # ]
@@ -26,7 +22,6 @@ import torch
 import torchaudio as ta
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
-from diffusers import AudioLDM2Pipeline, DPMSolverMultistepScheduler
 from transformers import pipeline
 from chatterbox.tts_turbo import ChatterboxTurboTTS
 import scipy.io.wavfile as wavfile
@@ -290,64 +285,6 @@ class DialogueGenerator:
         
         return audio_tensors
 
-class SFXGenerator:
-    def __init__(self):
-        self.pipe = None
-    
-    def initialize(self):
-        """Load AudioLDM2 model once."""
-        if self.pipe is None:
-            logger.info("Loading AudioLDM2 model...")
-            model_id = "cvssp/audioldm2"
-            self.pipe = AudioLDM2Pipeline.from_pretrained(model_id, torch_dtype=torch.float16)
-            self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(self.pipe.scheduler.config)
-            self.pipe.enable_model_cpu_offload()
-            logger.info("AudioLDM2 model loaded.")
-    
-    def unload(self):
-        """Unload model from memory."""
-        if self.pipe is not None:
-            logger.info("Unloading AudioLDM2 model...")
-            del self.pipe
-            self.pipe = None
-        torch.cuda.empty_cache()
-    
-    def generate(self, segment: Dict, gen_count: int) -> List[torch.Tensor]:
-        """Generate N audio versions for an SFX segment."""
-        self.initialize()
-        
-        sfx_description = segment['sfx_description']
-        negative_prompt = "Low quality, average quality, muffled, noisy"
-        sample_rate = 16000
-        
-        logger.info(f"Generating {gen_count} SFX versions: {sfx_description[:40]}...")
-        
-        audio_tensors = []
-        for gen_idx in range(gen_count):
-            try:
-                # Vary seed for different generations
-                seed = 42 + gen_idx
-                generator = torch.Generator("cuda").manual_seed(seed)
-                
-                audio = self.pipe(
-                    prompt=sfx_description,
-                    negative_prompt=negative_prompt,
-                    num_inference_steps=10,
-                    audio_length_in_s=10.0,
-                    generator=generator
-                )
-                
-                # Extract audio tensor
-                audio_np = audio.audios[0]
-                audio_tensor = torch.from_numpy(audio_np).float()
-                audio_tensors.append(audio_tensor)
-                logger.info(f"  Generated SFX version {gen_idx + 1}/{gen_count}")
-            except Exception as e:
-                logger.error(f"Failed to generate SFX version {gen_idx + 1}: {e}")
-                continue
-        
-        return audio_tensors
-
 # ==================== FILE HANDLER ====================
 
 def save_audio_file(audio_tensor: torch.Tensor, segment: Dict, gen_idx: int, 
@@ -457,39 +394,30 @@ def main():
     # Unload Chatterbox to free VRAM
     dialogue_gen.unload()
     
-    # ==================== PASS 2: PROCESS SFX WITH LDM2 ====================
+    # ==================== EXPORT SFX TASKS ====================
     if sfx_segments_to_process:
-        logger.info("=" * 60)
-        logger.info("PASS 2: Processing SFX segments (AudioLDM2)")
-        logger.info("=" * 60)
+        sfx_tasks_path = os.path.join(args.output_dir, "sfx_tasks.json")
+        os.makedirs(args.output_dir, exist_ok=True)
         
-        sfx_gen = SFXGenerator()
-        
+        sfx_tasks = []
         for segment in sfx_segments_to_process:
-            try:
-                audio_tensors = sfx_gen.generate(segment, args.gen_count)
-                sample_rate = 16000
-                
-                # Save generated audio files
-                for gen_idx, audio_tensor in enumerate(audio_tensors):
-                    filepath = save_audio_file(audio_tensor, segment, gen_idx, sample_rate, args.output_dir)
-                    if filepath:
-                        total_files += 1
-                    else:
-                        failed_count += 1
+            sfx_tasks.append({
+                "sequence": segment["sequence"],
+                "description": segment["sfx_description"],
+                "gen_count": args.gen_count
+            })
             
-            except Exception as e:
-                logger.error(f"Failed to process SFX segment {segment['sequence']}: {e}")
-                failed_count += 1
-                continue
-        
-        logger.info(f"SFX pass complete. Generated {total_files} total files, {failed_count} total failed.")
-        sfx_gen.unload()
-    
+        try:
+            with open(sfx_tasks_path, "w") as f:
+                json.dump(sfx_tasks, f, indent=4)
+            logger.info(f"Exported {len(sfx_tasks)} SFX tasks to {sfx_tasks_path}")
+        except Exception as e:
+            logger.error(f"Failed to export SFX tasks: {e}")
+
     # ==================== SUMMARY ====================
     logger.info("=" * 60)
     logger.info(f"Generation complete!")
-    logger.info(f"Total files generated: {total_files}")
+    logger.info(f"Total dialogue files generated: {total_files}")
     logger.info(f"Failed generations: {failed_count}")
     logger.info(f"Output directory: {args.output_dir}")
     logger.info("=" * 60)
