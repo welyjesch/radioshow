@@ -154,3 +154,92 @@ uv run generate_audio.py --help
 - Emotion detection: ~1 second per segment
 - SFX generation: ~15-30 seconds per description
 - Multiple generations: Linear scaling (3x gen-count ≈ 3x time)
+
+---
+
+# Stage 3: Audio Concatenation (Streamlit Web UI)
+
+After generating dialogue and SFX audio, use the Streamlit web UI to select, preview, and concatenate audio segments.
+
+## Running the Concatenator
+
+```bash
+streamlit run concatenate_audio.py
+```
+
+This launches a web UI at `http://localhost:8501`
+
+## Features
+
+### Sequence Selection
+- View all generated audio files grouped by sequence number
+- For each sequence, select from available versions (if multiple generations were created)
+- See duration of each audio file
+- Radio button interface for easy selection
+
+### Adding Silence
+- Click "Add Silence After Sequence X" button to insert silence gaps
+- Modal dialog prompts for silence duration (0.1 to 60 seconds)
+- Silence appears as a marker in the concatenation preview
+- Useful for natural pauses between dialogue and SFX
+
+### Audio Preview
+- **Play Selected**: Preview individual sequence audio files
+- **Play All**: Preview the complete concatenation
+- Built-in player at the bottom of the page
+
+### Export
+- Shows total duration of final concatenated audio
+- **Create & Download** button to generate final audio
+- Automatically saves as `radioshow_output_<YYYYMMDD_HHMMSS>.wav`
+- File saved both locally and available for download
+
+## Workflow Example
+
+1. Run dialogue generation:
+   ```bash
+   uv run generate_audio.py sample_script.txt
+   ```
+
+2. Run SFX generation:
+   ```bash
+   uv run generate_sfx.py --tasks-file generated_audio/sfx_tasks.json
+   ```
+
+3. Open concatenator:
+   ```bash
+   streamlit run concatenate_audio.py
+   ```
+
+4. For each sequence:
+   - Select your preferred version from radio options
+   - Click "Add Silence" to insert gaps if needed
+   - Confirm silence duration in modal
+
+5. Click "Play All" to preview the complete concatenation
+
+6. Click "Create & Download Final Audio" to generate the final MP3/WAV
+
+## Concatenation List Format
+
+Internally, each concatenation is represented as a list:
+```python
+[
+    "<0001-01>_NARRATOR_intro.wav",
+    {"add_silence": 1.5},
+    "<0002-01>_SFX_explosion.wav",
+    {"add_silence": 2.0},
+    "<0003-01>_NARRATOR_outro.wav"
+]
+```
+
+The processor iterates through this list:
+- String items: Load and append the audio file
+- `{"add_silence": N}`: Generate and append N seconds of silence
+
+## Output
+
+Final concatenated audio is saved as:
+- Format: WAV (lossless, full quality)
+- Filename: `radioshow_output_<YYYYMMDD_HHMMSS>.wav`
+- Location: Same directory as input files (configurable in sidebar)
