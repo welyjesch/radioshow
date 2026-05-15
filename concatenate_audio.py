@@ -27,8 +27,8 @@ SUPPORTED_FORMATS = {".wav", ".mp3"}
 # ==================== UTILITY FUNCTIONS ====================
 
 def extract_sequence_num(filename: str) -> Optional[int]:
-    """Extract sequence number from filename format: <XXXX-XX>_..."""
-    match = re.match(r"<(\d+)", filename)
+    """Extract sequence number from filename format: XXXX-XX_..."""
+    match = re.match(r"(\d+)-\d+_", filename)
     if match:
         try:
             return int(match.group(1))
@@ -75,7 +75,7 @@ def generate_silence(duration_seconds: float, sample_rate: int = 44100) -> np.nd
 def get_file_label(filename: str) -> str:
     """Create a readable label for a file."""
     # Remove sequence number and extension
-    label = re.sub(r"^<\d+-\d+>_", "", filename)
+    label = re.sub(r"^\d+-\d+_", "", filename)
     label = Path(label).stem
     return label
 
