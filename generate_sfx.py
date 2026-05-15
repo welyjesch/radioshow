@@ -3,7 +3,7 @@
 # dependencies = [
 #     "diffusers==0.27.2",
 #     "transformers==4.38.2",
-#     "huggingface-hub==0.20.3",
+#     "huggingface-hub==0.22.2",
 #     "accelerate==0.28.0",
 #     "torch",
 #     "scipy==1.13.0",
