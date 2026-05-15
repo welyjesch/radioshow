@@ -12,6 +12,7 @@
 
 import os
 import json
+import re
 import argparse
 import logging
 import torch
@@ -23,11 +24,23 @@ import scipy.io.wavfile as wavfile
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+def sanitize_filename(text, max_length=16):
+    """Convert text to safe filename."""
+    clean = text.lower()
+    clean = re.sub(r'[^a-z0-9\s]', '', clean)
+    clean = re.sub(r'\s+', '_', clean.strip())
+    return clean[:max_length].strip('_')
+
+def truncate_text(text, max_length=16):
+    """Truncate text and sanitize for filename."""
+    return sanitize_filename(text, max_length)
+
 def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
-    """Saves SFX audio using the naming convention: <sequence>_<SFX>_<gen>.wav"""
-    seq = segment["sequence"]
-    desc = segment["description"].replace(" ", "_")[:30]
-    filename = f"<{seq}>_SFX_{desc}_{gen_idx + 1}.wav"
+    """Saves SFX audio using the naming convention: NNNN-NN_SFX_description.wav"""
+    seq_padded = str(segment["sequence"]).zfill(4)
+    gen_padded = str(gen_idx + 1).zfill(2)
+    sfx_part = truncate_text(segment["description"])
+    filename = f"{seq_padded}-{gen_padded}_SFX_{sfx_part}.wav"
     filepath = os.path.join(output_dir, filename)
     
     try:
@@ -94,12 +107,14 @@ class SFXGenerator:
 def main():
     parser = argparse.ArgumentParser(description="Generate SFX from sfx_tasks.json using AudioLDM2")
     parser.add_argument("--tasks-file", type=str, required=True, help="Path to sfx_tasks.json")
-    parser.add_argument("--output-dir", type=str, required=True, help="Directory to save generated audio")
     args = parser.parse_args()
 
     if not os.path.exists(args.tasks_file):
         logger.error(f"Tasks file not found: {args.tasks_file}")
         return
+
+    # Output directory is the same as tasks file directory
+    output_dir = os.path.dirname(os.path.abspath(args.tasks_file))
 
     with open(args.tasks_file, "r") as f:
         tasks = json.load(f)
@@ -108,7 +123,7 @@ def main():
         logger.info("No SFX tasks to process.")
         return
 
-    os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
     
     sfx_gen = SFXGenerator()
     total_files = 0
@@ -124,7 +139,7 @@ def main():
             audio_samples = sfx_gen.generate(task, task["gen_count"])
             
             for gen_idx, audio_np in enumerate(audio_samples):
-                filepath = save_audio_file(audio_np, task, gen_idx, sample_rate, args.output_dir)
+                filepath = save_audio_file(audio_np, task, gen_idx, sample_rate, output_dir)
                 if filepath:
                     total_files += 1
                 else:
@@ -140,7 +155,7 @@ def main():
     logger.info(f"SFX Generation complete!")
     logger.info(f"Total SFX files generated: {total_files}")
     logger.info(f"Failed generations: {failed_count}")
-    logger.info(f"Output directory: {args.output_dir}")
+    logger.info(f"Output directory: {output_dir}")
     logger.info("=" * 60)
 
 if __name__ == "__main__":
