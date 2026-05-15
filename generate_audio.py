@@ -1,17 +1,18 @@
 # /// script
-# requires-python = ">=3.12"
+# requires-python = ">=3.12,<3.13"
 # dependencies = [
 #     "torch==2.6.0",
 #     "torchaudio==2.6.0",
-#     "transformers==4.38.2",
+#     "transformers==5.2.0",
+#     "numpy>=1.24.0,<2.0.0",
+#     "librosa==0.11.0",
+#     "s3tokenizer",
 #     "diffusers==0.27.2",
 #     "huggingface-hub==0.22.2",
 #     "accelerate==0.28.0",
 #     "scipy==1.13.0",
-#     "librosa==0.11.0",
-#     "s3tokenizer",
-#     "chatterbox-tts @ git+https://github.com/resemble-ai/chatterbox.git",
 #     "resemble-perth @ git+https://github.com/resemble-ai/Perth.git@master",
+#     "chatterbox-tts @ git+https://github.com/resemble-ai/chatterbox.git",
 # ]
 # ///
 
