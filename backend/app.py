@@ -1,7 +1,10 @@
-# /// script dependencies
-# flask
-# flask-cors
-# pydub
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "flask",
+#     "flask-cors",
+#     "pydub",
+# ]
 # ///
 
 from flask import Flask, request, jsonify, send_from_directory
