@@ -7,7 +7,7 @@
 #     "numpy>=1.24.0,<2.0.0",
 #     "librosa==0.11.0",
 #     "s3tokenizer",
-#     "diffusers==0.27.2",
+#     "diffusers==0.29.0",
 #     "huggingface-hub==0.22.2",
 #     "accelerate==0.28.0",
 #     "scipy==1.13.0",
