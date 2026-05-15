@@ -2,6 +2,7 @@
 # dependencies = [
 #     "diffusers==0.27.2",
 #     "transformers==4.38.2",
+#     "huggingface-hub<0.21.0",
 #     "accelerate",
 #     "torch",
 #     "scipy",
