@@ -308,6 +308,11 @@ else:
         for seq_num, duration in sorted(st.session_state.pending_silence.items()):
             st.info(f"Silence ({duration}s) after sequence {seq_num:04d}")
     
+    # Show current player if something is playing
+    if st.session_state.current_player:
+        st.header("🎵 Now Playing")
+        st.audio(st.session_state.current_player, format="audio/wav")
+    
     # Build concatenation list
     st.header("🎵 Concatenation Preview")
     
@@ -348,9 +353,9 @@ else:
         
         st.metric("Total Duration", format_duration_total(total_duration))
     
-    # Player section
+    # Player section for concatenated audio
     st.divider()
-    st.header("▶️ Full Preview")
+    st.header("▶️ Full Preview (Concatenated)")
     
     player_col1, player_col2 = st.columns([4, 1])
     
@@ -364,7 +369,7 @@ else:
     
     with player_col1:
         if st.session_state.current_player:
-            st.audio(st.session_state.current_player, format="audio/wav", key=f"player_{st.session_state.play_key}")
+            st.audio(st.session_state.current_player, format="audio/wav")
     
     # Export section
     st.divider()
