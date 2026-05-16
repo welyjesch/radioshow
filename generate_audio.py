@@ -91,9 +91,8 @@ def truncate_text(text, max_length=16):
     return sanitize_filename(text, max_length)
 
 def split_sentences(text):
-    """Split text into sentences."""
-    sentences = re.findall(r'[^.!?]+(?:[.!?]+|$)', text)
-    return [s.strip() for s in sentences if s.strip()]
+    """Split text into lines."""
+    return text.splitlines()
 
 def get_generation_modifiers(gen_idx: int) -> Tuple[float, float, float]:
     """Get parameter modifiers for a given generation index.
@@ -131,13 +130,12 @@ def parse_script(script_path: str) -> List[Dict]:
         if sfx_match:
             # Process accumulated dialogue for previous speaker
             if current_block_text_lines and current_speaker_name:
-                block_full_text = " ".join(current_block_text_lines).strip()
-                if block_full_text:
-                    sentences = split_sentences(block_full_text)
-                    for sentence in sentences:
+                # Use the lines as they are, without joining and re-splitting by punctuation
+                for line_text in current_block_text_lines:
+                    if line_text:
                         seq_counter += 1
-                        # Strip parentheses-enclosed tags from the sentence before storing
-                        clean_sentence = re.sub(r'\s*\([^)]+\)\s*', ' ', sentence).strip()
+                        # Remove everything between the first '[' and the last ']' for the speaker tag
+                        clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
                         clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
                         
                         segments.append({
@@ -145,7 +143,7 @@ def parse_script(script_path: str) -> List[Dict]:
                             'sequence': seq_counter,
                             'speaker': current_speaker_name,
                             'text': clean_sentence,
-                            'original_text': sentence,
+                            'original_text': line_text,
                             'explicit_emotion': None
                         })
                 current_block_text_lines = []
@@ -164,17 +162,16 @@ def parse_script(script_path: str) -> List[Dict]:
             continue
         
         # Check for speaker tag
-        speaker_match = re.match(r'^\[([A-Za-z0-9_ ]+)\]\s*(.*)', line_stripped)
+        speaker_match = re.match(r'^\[([A-Za-z0-9_ \-]+)\]\s*(.*)', line_stripped)
         if speaker_match:
             # Process accumulated text for previous speaker
             if current_block_text_lines and current_speaker_name:
-                block_full_text = " ".join(current_block_text_lines).strip()
-                if block_full_text:
-                    sentences = split_sentences(block_full_text)
-                    for sentence in sentences:
+                # Use the lines as they are, without joining and re-splitting by punctuation
+                for line_text in current_block_text_lines:
+                    if line_text:
                         seq_counter += 1
-                        # Strip parentheses-enclosed tags from the sentence before storing
-                        clean_sentence = re.sub(r'\s*\([^)]+\)\s*', ' ', sentence).strip()
+                        # Remove everything between the first '[' and the last ']' for the speaker tag
+                        clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
                         clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
                         
                         segments.append({
@@ -182,7 +179,7 @@ def parse_script(script_path: str) -> List[Dict]:
                             'sequence': seq_counter,
                             'speaker': current_speaker_name,
                             'text': clean_sentence,
-                            'original_text': sentence,
+                            'original_text': line_text,
                             'explicit_emotion': None
                         })
                 current_block_text_lines = []
@@ -222,13 +219,12 @@ def parse_script(script_path: str) -> List[Dict]:
     
     # Process remaining accumulated text
     if current_block_text_lines and current_speaker_name:
-        block_full_text = " ".join(current_block_text_lines).strip()
-        if block_full_text:
-            sentences = split_sentences(block_full_text)
-            for sentence in sentences:
+        # Use the lines as they are, without joining and re-splitting by punctuation
+        for line_text in current_block_text_lines:
+            if line_text:
                 seq_counter += 1
-                # Strip parentheses-enclosed tags from the sentence before storing
-                clean_sentence = re.sub(r'\s*\([^)]+\)\s*', ' ', sentence).strip()
+                # Remove everything between the first '[' and the last ']' for the speaker tag
+                clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
                 clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
                 
                 segments.append({
@@ -236,7 +232,7 @@ def parse_script(script_path: str) -> List[Dict]:
                     'sequence': seq_counter,
                     'speaker': current_speaker_name,
                     'text': clean_sentence,
-                    'original_text': sentence,
+                    'original_text': line_text,
                     'explicit_emotion': None
                 })
     
