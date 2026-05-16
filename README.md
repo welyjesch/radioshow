@@ -18,6 +18,12 @@ uv run generate_audio.py sample_script.txt --output-dir my_audio
 uv run generate_sfx.py --tasks-file my_audio/sfx_tasks.json --output-dir my_audio
 ```
 
+### Stage 3: Selection & Concatenation
+Use the Flask backend for dialogue selection, SFX editing, and final concatenation:
+```bash
+uv run backend/app.py
+```
+
 ## Script Format
 
 Create a `.txt` file with speaker dialogue and sound effects:
@@ -60,7 +66,7 @@ Create `voice_paths.json` in the same directory with speaker-to-voice mappings:
 
 Voice files should be `.wav` files containing natural speech samples (3-5 seconds) used as reference for voice cloning by Chatterbox.
 
-If a speaker isn't in the mapping, the system will use the first reference voice found as fallback.
+If a speaker isn't in the mapping, the system will search for a matching `.wav` file in the `voices/` directory based on the speaker's name.
 
 ## Output Format
 
@@ -80,16 +86,19 @@ Examples:
 ## Parameters
 
 ### Dialogue Generation
+The system provides two generation scripts depending on the required quality:
+- `generate_audio.py`: Uses **chatterbox-turbo (300m)** for fast, straight-forward voice acting.
+- `generate_audio_longer.py`: Uses **chatterbox (500m)** for higher quality and more emotive voice acting.
+
 ```bash
 uv run generate_audio.py <script> [options]
-
-Positional:
-  script                Script file path (.txt)
-
-Options:
-  --gen-count, -c N     Generate N versions per segment (default: 1)
-  --output-dir, -o DIR  Output directory (default: generated_audio)
 ```
+
+**Default Behavior**: If the `-c` parameter is omitted, the system generates 7 versions per segment by default to provide a variety of emotive takes.
+
+**Options**:
+  `--gen-count, -c N`     Generate N versions per segment (default: 7)
+  `--output-dir, -o DIR`  Output directory (default: generated_audio)
 
 ### SFX Generation
 ```bash

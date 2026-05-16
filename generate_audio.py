@@ -25,6 +25,7 @@ from typing import Dict, List, Tuple, Optional
 from transformers import pipeline
 from chatterbox.tts_turbo import ChatterboxTurboTTS
 import scipy.io.wavfile as wavfile
+from pydub import AudioSegment
 
 # ==================== CONFIGURATION ====================
 
@@ -43,22 +44,6 @@ EMOTION_PARAMETERS: Dict[str, Dict[str, float]] = {
     "worried": {"exaggeration": 0.3, "cfg_weight": 0.7, "temperature": 0.6},
 }
 
-DEFAULT_VOICE_PATH = "default_voice.wav"
-OUTPUT_DIR = "generated_audio"
-DEFAULT_GENERATION_COUNT = 7
-
-# Generation modifiers for parameter diversity
-# Maps generation index to multipliers for (exaggeration, cfg_weight, temperature)
-GENERATION_MODIFIERS = [
-    (0.75, 0.75, 0.75),   # Gen 0: -25%, -25%, -25%
-    (1.0, 0.75, 0.75),    # Gen 1: 0%, -25%, -25%
-    (1.0, 1.0, 0.75),     # Gen 2: 0%, 0%, -25%
-    (1.0, 1.0, 1.0),      # Gen 3: 0%, 0%, 0% (base)
-    (1.25, 1.0, 1.0),     # Gen 4: 25%, 0%, 0%
-    (1.25, 1.25, 1.0),    # Gen 5: 25%, 25%, 0%
-    (1.25, 1.25, 0.75),   # Gen 6: 25%, 25%, -25%
-]
-
 # Load voice paths from voice_paths.json if it exists
 VOICE_PATHS = {}
 if os.path.exists("voice_paths.json"):
@@ -67,6 +52,10 @@ if os.path.exists("voice_paths.json"):
             VOICE_PATHS = json.load(f)
     except (json.JSONDecodeError, FileNotFoundError):
         pass
+
+DEFAULT_VOICE_KEY = "default_voice"
+OUTPUT_DIR = "generated_audio"
+DEFAULT_GENERATION_COUNT = 7
 
 # ==================== UTILITIES ====================
 
@@ -291,10 +280,10 @@ class DialogueGenerator:
         original_text = segment['original_text']
         
         # Get voice path
-        voice_path = VOICE_PATHS.get(speaker_name, DEFAULT_VOICE_PATH)
-        if not os.path.exists(voice_path):
-            logger.warning(f"Voice file not found: {voice_path}. Using default.")
-            voice_path = DEFAULT_VOICE_PATH
+        voice_path = VOICE_PATHS.get(speaker_name, VOICE_PATHS.get(DEFAULT_VOICE_KEY))
+        if not voice_path or not os.path.exists(voice_path):
+            logger.warning(f"Voice file not found for {speaker_name}. Using fallback.")
+            voice_path = VOICE_PATHS.get(DEFAULT_VOICE_KEY)
         
         # Detect emotion
         emotion = self.detect_emotion(text)
@@ -309,6 +298,7 @@ class DialogueGenerator:
                    f"(emotion: {emotion})")
         
         audio_tensors = []
+        final_params = []
         for gen_idx in range(gen_count):
             try:
                 # Get modifiers for this generation
@@ -327,12 +317,18 @@ class DialogueGenerator:
                     temperature=modified_temperature
                 )
                 audio_tensors.append(audio)
+                final_params.append({
+                    'exaggeration': modified_exaggeration,
+                    'cfg_weight': modified_cfg_weight,
+                    'temperature': modified_temperature
+                })
                 logger.info(f"  Generated version {gen_idx + 1}/{gen_count} (modifiers: {exaggeration_mult}x, {cfg_weight_mult}x, {temperature_mult}x)")
             except Exception as e:
                 logger.error(f"Failed to generate version {gen_idx + 1}: {e}")
+                final_params.append(None)
                 continue
         
-        return audio_tensors
+        return audio_tensors, final_params
 
 # ==================== FILE HANDLER ====================
 
@@ -422,7 +418,7 @@ def main():
     
     for segment in dialogue_segments:
         try:
-            audio_tensors = dialogue_gen.generate(segment, args.gen_count)
+            audio_tensors, final_params = dialogue_gen.generate(segment, args.gen_count)
             sample_rate = dialogue_gen.model.sr
             
             # Save generated audio files
@@ -430,6 +426,35 @@ def main():
                 filepath = save_audio_file(audio_tensor, segment, gen_idx, sample_rate, args.output_dir)
                 if filepath:
                     total_files += 1
+                    
+                    # Log metadata
+                    filename = os.path.basename(filepath)
+                    duration = len(AudioSegment.from_file(filepath)) / 1000.0
+                    
+                    # Get the specific CFG values for this generation index
+                    gen_params = final_params[gen_idx]
+                    
+                    metadata_entry = {
+                        "filename": filename,
+                        "transcription": segment['text'],
+                        "duration": duration,
+                        "exaggeration": gen_params['exaggeration'],
+                        "cfg_weight": gen_params['cfg_weight'],
+                        "temperature": gen_params['temperature']
+                    }
+                    
+                    metadata_path = os.path.join(args.output_dir, "generation_metadata.json")
+                    metadata = []
+                    if os.path.exists(metadata_path):
+                        with open(metadata_path, "r") as f:
+                            try:
+                                metadata = json.load(f)
+                            except json.JSONDecodeError:
+                                metadata = []
+                    
+                    metadata.append(metadata_entry)
+                    with open(metadata_path, "w") as f:
+                        json.dump(metadata, f, indent=4)
                 else:
                     failed_count += 1
         

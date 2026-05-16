@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import List, Dict
 from pydub import AudioSegment
 from datetime import datetime
+import json
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
@@ -83,6 +84,19 @@ def get_audio_files(output_dir: str) -> Dict[int, List[str]]:
     print(f"[DEBUG] Final files_by_sequence: {files_by_sequence}")
     return dict(sorted(files_by_sequence.items()))
 
+def load_generation_metadata(output_dir: str) -> Dict[str, Dict]:
+    metadata_path = os.path.join(output_dir, "generation_metadata.json")
+    if not os.path.exists(metadata_path):
+        return {}
+    try:
+        with open(metadata_path, "r") as f:
+            data = json.load(f)
+            # Convert list to dict for fast lookup by filename
+            return {item["filename"]: item for item in data}
+    except Exception as e:
+        print(f"Error loading metadata: {e}")
+        return {}
+
 def get_audio_duration(filepath: str) -> float:
     try:
         audio = AudioSegment.from_file(filepath)
@@ -97,6 +111,7 @@ def get_audio_duration(filepath: str) -> float:
 def list_files():
     output_dir = DEFAULT_OUTPUT_DIR
     files_by_seq = get_audio_files(output_dir)
+    metadata_map = load_generation_metadata(output_dir)
     
     result = []
     for seq, files in files_by_seq.items():
@@ -109,10 +124,16 @@ def list_files():
             if not label.strip():
                 label = Path(f).stem
             
+            # Get metadata if available
+            meta = metadata_map.get(f, {})
+            
             file_info.append({
                 "filename": f,
                 "label": label,
-                "duration": get_audio_duration(path)
+                "duration": meta.get("duration", get_audio_duration(path)),
+                "exaggeration": meta.get("exaggeration"),
+                "cfg_weight": meta.get("cfg_weight"),
+                "temperature": meta.get("temperature")
             })
         result.append({
             "sequence": seq,
