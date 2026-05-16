@@ -45,7 +45,19 @@ EMOTION_PARAMETERS: Dict[str, Dict[str, float]] = {
 
 DEFAULT_VOICE_PATH = "default_voice.wav"
 OUTPUT_DIR = "generated_audio"
-DEFAULT_GENERATION_COUNT = 1
+DEFAULT_GENERATION_COUNT = 7
+
+# Generation modifiers for parameter diversity
+# Maps generation index to multipliers for (exaggeration, cfg_weight, temperature)
+GENERATION_MODIFIERS = [
+    (0.75, 0.75, 0.75),   # Gen 0: -25%, -25%, -25%
+    (1.0, 0.75, 0.75),    # Gen 1: 0%, -25%, -25%
+    (1.0, 1.0, 0.75),     # Gen 2: 0%, 0%, -25%
+    (1.0, 1.0, 1.0),      # Gen 3: 0%, 0%, 0% (base)
+    (1.25, 1.0, 1.0),     # Gen 4: 25%, 0%, 0%
+    (1.25, 1.25, 1.0),    # Gen 5: 25%, 25%, 0%
+    (1.25, 1.25, 0.75),   # Gen 6: 25%, 25%, -25%
+]
 
 # Load voice paths from voice_paths.json if it exists
 VOICE_PATHS = {}
@@ -83,6 +95,18 @@ def split_sentences(text):
     sentences = re.findall(r'[^.!?]+(?:[.!?]+|$)', text)
     return [s.strip() for s in sentences if s.strip()]
 
+def get_generation_modifiers(gen_idx: int) -> Tuple[float, float, float]:
+    """Get parameter modifiers for a given generation index.
+    
+    Returns (exaggeration_multiplier, cfg_weight_multiplier, temperature_multiplier).
+    For generations beyond the defined list, uses the base (4th generation) modifiers.
+    """
+    if gen_idx < len(GENERATION_MODIFIERS):
+        return GENERATION_MODIFIERS[gen_idx]
+    else:
+        # All generations after the 7th use the 4th generation (base) settings
+        return GENERATION_MODIFIERS[3]
+
 # ==================== SCRIPT PARSER ====================
 
 def parse_script(script_path: str) -> List[Dict]:
@@ -112,11 +136,15 @@ def parse_script(script_path: str) -> List[Dict]:
                     sentences = split_sentences(block_full_text)
                     for sentence in sentences:
                         seq_counter += 1
+                        # Strip parentheses-enclosed tags from the sentence before storing
+                        clean_sentence = re.sub(r'\s*\([^)]+\)\s*', ' ', sentence).strip()
+                        clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
+                        
                         segments.append({
                             'type': 'dialogue',
                             'sequence': seq_counter,
                             'speaker': current_speaker_name,
-                            'text': sentence,
+                            'text': clean_sentence,
                             'original_text': sentence,
                             'explicit_emotion': None
                         })
@@ -145,11 +173,15 @@ def parse_script(script_path: str) -> List[Dict]:
                     sentences = split_sentences(block_full_text)
                     for sentence in sentences:
                         seq_counter += 1
+                        # Strip parentheses-enclosed tags from the sentence before storing
+                        clean_sentence = re.sub(r'\s*\([^)]+\)\s*', ' ', sentence).strip()
+                        clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
+                        
                         segments.append({
                             'type': 'dialogue',
                             'sequence': seq_counter,
                             'speaker': current_speaker_name,
-                            'text': sentence,
+                            'text': clean_sentence,
                             'original_text': sentence,
                             'explicit_emotion': None
                         })
@@ -195,11 +227,15 @@ def parse_script(script_path: str) -> List[Dict]:
             sentences = split_sentences(block_full_text)
             for sentence in sentences:
                 seq_counter += 1
+                # Strip parentheses-enclosed tags from the sentence before storing
+                clean_sentence = re.sub(r'\s*\([^)]+\)\s*', ' ', sentence).strip()
+                clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
+                
                 segments.append({
                     'type': 'dialogue',
                     'sequence': seq_counter,
                     'speaker': current_speaker_name,
-                    'text': sentence,
+                    'text': clean_sentence,
                     'original_text': sentence,
                     'explicit_emotion': None
                 })
@@ -264,21 +300,34 @@ class DialogueGenerator:
         emotion = self.detect_emotion(text)
         params = EMOTION_PARAMETERS.get(emotion, EMOTION_PARAMETERS['neutral'])
         
-        logger.info(f"Generating {gen_count} versions for '{speaker_name}': {text[:40]}... "
+        # Strip parentheses-enclosed tags (emotion/delivery markers) from text
+        # These should not be spoken aloud
+        text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', text).strip()
+        text_for_tts = re.sub(r'\s+', ' ', text_for_tts)
+        
+        logger.info(f"Generating {gen_count} versions for '{speaker_name}': {text_for_tts[:40]}... "
                    f"(emotion: {emotion})")
         
         audio_tensors = []
         for gen_idx in range(gen_count):
             try:
+                # Get modifiers for this generation
+                exaggeration_mult, cfg_weight_mult, temperature_mult = get_generation_modifiers(gen_idx)
+                
+                # Apply modifiers to base parameters
+                modified_exaggeration = params['exaggeration'] * exaggeration_mult
+                modified_cfg_weight = params['cfg_weight'] * cfg_weight_mult
+                modified_temperature = params['temperature'] * temperature_mult
+                
                 audio = self.model.generate(
-                    text,
+                    text_for_tts,
                     audio_prompt_path=voice_path,
-                    exaggeration=params['exaggeration'],
-                    cfg_weight=params['cfg_weight'],
-                    temperature=params['temperature']
+                    exaggeration=modified_exaggeration,
+                    cfg_weight=modified_cfg_weight,
+                    temperature=modified_temperature
                 )
                 audio_tensors.append(audio)
-                logger.info(f"  Generated version {gen_idx + 1}/{gen_count}")
+                logger.info(f"  Generated version {gen_idx + 1}/{gen_count} (modifiers: {exaggeration_mult}x, {cfg_weight_mult}x, {temperature_mult}x)")
             except Exception as e:
                 logger.error(f"Failed to generate version {gen_idx + 1}: {e}")
                 continue

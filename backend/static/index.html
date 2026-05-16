@@ -8,24 +8,135 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; background: #1a1a2e; color: #eee; }
         h1 { margin-bottom: 20px; }
-        .sequence-group { margin-bottom: 24px; background: #16213e; border-radius: 8px; padding: 16px; }
-        .sequence-header { font-size: 18px; font-weight: bold; margin-bottom: 12px; color: #e94560; }
-        .file-list { display: flex; flex-direction: column; gap: 8px; }
-        .file-item { display: flex; align-items: center; gap: 12px; padding: 10px; background: #0f3460; border-radius: 6px; }
-        .file-item input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
-        .file-item label { flex: 1; cursor: pointer; }
-        .file-item .duration { color: #888; font-size: 14px; }
-        .audio-player { width: 100%; margin-top: 8px; }
-        .controls { margin-top: 20px; padding: 16px; background: #16213e; border-radius: 8px; }
-        .controls label { display: block; margin-bottom: 8px; }
-        .controls input[type="number"] { width: 80px; padding: 8px; border-radius: 4px; border: none; margin-right: 16px; }
-        .controls button { padding: 10px 24px; background: #e94560; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; }
-        .controls button:hover { background: #d63d56; }
-        .controls button:disabled { background: #555; cursor: not-allowed; }
-        .output-section { margin-top: 20px; padding: 16px; background: #16213e; border-radius: 8px; }
-        .output-section audio { width: 100%; margin-top: 12px; }
-        .error { color: #ff6b6b; margin-top: 12px; }
-        .loading { color: #888; }
+        
+        .sequence-group { 
+            margin-bottom: 16px; 
+            background: #16213e; 
+            border-radius: 8px; 
+            padding: 16px; 
+        }
+        
+        .sequence-header { 
+            font-size: 16px; 
+            font-weight: bold; 
+            margin-bottom: 12px; 
+            color: #e94560; 
+        }
+        
+        .sequence-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .file-options {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .file-option {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .file-option input[type="radio"] {
+            cursor: pointer;
+        }
+        
+        .file-option label {
+            cursor: pointer;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        
+        .play-btn {
+            padding: 4px 8px;
+            background: #0f9896;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: 2px;
+        }
+        
+        .play-btn:hover {
+            background: #0d7a77;
+        }
+        
+        .silence-section {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #0f3460;
+        }
+        
+        .silence-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .silence-input {
+            width: 60px;
+            padding: 4px;
+            border-radius: 4px;
+            border: none;
+            font-size: 12px;
+        }
+        
+        .controls {
+            margin-top: 16px;
+            padding: 16px;
+            background: #16213e;
+            border-radius: 8px;
+        }
+        
+        .controls button {
+            padding: 10px 24px;
+            background: #e94560;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .controls button:hover {
+            background: #d63d56;
+        }
+        
+        .controls button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        
+        .output-section {
+            margin-top: 20px;
+            padding: 16px;
+            background: #16213e;
+            border-radius: 8px;
+        }
+        
+        .output-section audio {
+            width: 100%;
+            margin-top: 12px;
+        }
+        
+        .error {
+            color: #ff6b6b;
+            margin-top: 12px;
+        }
+        
+        .loading {
+            color: #888;
+        }
     </style>
 </head>
 <body>
@@ -34,19 +145,33 @@
         <p class="loading">Loading audio files...</p>
     </div>
 
+    <audio id="previewPlayer"></audio>
+
     <script>
         const API_BASE = '';
-        let selectedFiles = [];
-        let outputFile = null;
+        let selectedBySequence = {};
+        let filesBySequence = {};
 
         async function loadFiles() {
             try {
                 const res = await fetch(`${API_BASE}/api/files`);
                 const data = await res.json();
+                filesBySequence = {};
+                data.forEach(seq => {
+                    filesBySequence[seq.sequence] = seq.files;
+                });
                 renderFiles(data);
             } catch (e) {
                 document.getElementById('app').innerHTML = `<p class="error">Error loading files: ${e.message}</p>`;
             }
+        }
+
+        function extractLabel(filename) {
+            const match = filename.match(/^(\d+)-(\d+)/);
+            if (match) {
+                return `${match[1]}-${match[2]}`;
+            }
+            return filename;
         }
 
         function renderFiles(filesBySeq) {
@@ -57,43 +182,109 @@
 
             let html = '';
             filesBySeq.forEach(seq => {
-                html += `<div class="sequence-group">
+                html += `<div class="sequence-group" data-seq="${seq.sequence}">
                     <div class="sequence-header">Sequence ${seq.sequence}</div>
-                    <div class="file-list">`;
-                seq.files.forEach(f => {
-                    html += `<div class="file-item">
-                        <input type="checkbox" id="${f.filename}" data-filename="${f.filename}" onchange="toggleFile(this)">
-                        <label for="${f.filename}">${f.label}</label>
-                        <span class="duration">${f.duration.toFixed(1)}s</span>
+                    <div class="sequence-row">
+                        <div class="file-options">`;
+                
+                seq.files.forEach((f, idx) => {
+                    const shortLabel = extractLabel(f.filename);
+                    const radioId = `seq${seq.sequence}_opt${idx}`;
+                    html += `<div class="file-option">
+                        <input type="radio" 
+                               name="seq${seq.sequence}" 
+                               id="${radioId}" 
+                               value="${f.filename}"
+                               data-seq="${seq.sequence}"
+                               data-filename="${f.filename}">
+                        <label for="${radioId}">${shortLabel}</label>
+                        <button type="button" class="play-btn" data-seq="${seq.sequence}" data-filename="${f.filename}">▶</button>
                     </div>`;
                 });
-                html += `</div></div>`;
+                
+                html += `</div>
+                        </div>
+                        <div class="silence-section">
+                            <div class="silence-checkbox">
+                                <input type="checkbox" 
+                                       id="silence_${seq.sequence}" 
+                                       data-seq="${seq.sequence}"
+                                       class="silence-toggle">
+                                <label for="silence_${seq.sequence}">+ silence (sec):</label>
+                                <input type="number" 
+                                       id="silence_val_${seq.sequence}" 
+                                       class="silence-input"
+                                       data-seq="${seq.sequence}"
+                                       value="0.5" 
+                                       min="0" 
+                                       max="10" 
+                                       step="0.1"
+                                       disabled>
+                            </div>
+                        </div>
+                    </div>`;
             });
 
             html += `<div class="controls">
-                <label>Silence between files (seconds): <input type="number" id="silence" value="0.5" min="0" max="10" step="0.1"></label>
-                <button onclick="concatenate()" id="concatBtn">Concatenate Selected</button>
+                <button id="concatBtn">Concatenate Selected</button>
             </div>
+            
             <div class="output-section" id="output" style="display:none">
                 <h3>Output:</h3>
                 <audio id="outputPlayer" controls></audio>
+                <p id="outputName"></p>
             </div>`;
 
             document.getElementById('app').innerHTML = html;
+            attachEventListeners();
         }
 
-        function toggleFile(checkbox) {
-            const filename = checkbox.dataset.filename;
-            if (checkbox.checked) {
-                selectedFiles.push(filename);
-            } else {
-                selectedFiles = selectedFiles.filter(f => f !== filename);
-            }
+        function attachEventListeners() {
+            // Radio button selection
+            document.querySelectorAll('input[type="radio"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    const seq = parseInt(e.target.dataset.seq);
+                    const filename = e.target.dataset.filename;
+                    selectedBySequence[seq] = filename;
+                });
+            });
+
+            // Play buttons
+            document.querySelectorAll('.play-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const filename = btn.dataset.filename;
+                    playPreview(filename);
+                });
+            });
+
+            // Silence checkboxes
+            document.querySelectorAll('.silence-toggle').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    const seq = parseInt(e.target.dataset.seq);
+                    const input = document.getElementById(`silence_val_${seq}`);
+                    input.disabled = !e.target.checked;
+                });
+            });
+
+            // Concatenate button
+            document.getElementById('concatBtn').addEventListener('click', concatenate);
+        }
+
+        function playPreview(filename) {
+            const player = document.getElementById('previewPlayer');
+            const url = `${API_BASE}/api/audio/${encodeURIComponent(filename)}`;
+            console.log('Playing:', url);
+            player.src = url;
+            player.play().catch(err => console.error('Failed to play:', err));
         }
 
         async function concatenate() {
-            if (!selectedFiles.length) {
-                alert('Please select at least one file');
+            const sequences = Object.keys(filesBySequence).map(Number).sort((a, b) => a - b);
+            const unselected = sequences.filter(seq => !selectedBySequence[seq]);
+            
+            if (unselected.length > 0) {
+                alert(`Please select audio for sequence(s): ${unselected.join(', ')}`);
                 return;
             }
 
@@ -101,14 +292,19 @@
             btn.disabled = true;
             btn.textContent = 'Processing...';
 
-            const silence = parseFloat(document.getElementById('silence').value) || 0;
             const list = [];
             
-            selectedFiles.forEach((filename, i) => {
-                if (i > 0 && silence > 0) {
-                    list.push({ add_silence: silence });
+            sequences.forEach(seq => {
+                list.push(selectedBySequence[seq]);
+                
+                const checkbox = document.getElementById(`silence_${seq}`);
+                if (checkbox && checkbox.checked) {
+                    const input = document.getElementById(`silence_val_${seq}`);
+                    const silenceSeconds = parseFloat(input.value);
+                    if (!isNaN(silenceSeconds) && silenceSeconds > 0) {
+                        list.push({ add_silence: silenceSeconds });
+                    }
                 }
-                list.push(filename);
             });
 
             try {
@@ -120,11 +316,12 @@
                 const data = await res.json();
                 
                 if (data.status === 'success') {
-                    outputFile = data.filename;
                     const player = document.getElementById('outputPlayer');
-                    player.src = `${API_BASE}/api/audio/${encodeURIComponent(data.filename)}`;
+                    const audioUrl = `${API_BASE}/api/audio/${encodeURIComponent(data.filename)}`;
+                    player.src = audioUrl;
+                    document.getElementById('outputName').textContent = data.filename;
                     document.getElementById('output').style.display = 'block';
-                    player.play();
+                    player.play().catch(err => console.error('Failed to play output:', err));
                 } else {
                     alert('Error: ' + data.message);
                 }
