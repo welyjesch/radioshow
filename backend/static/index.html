@@ -91,6 +91,33 @@
             font-size: 12px;
         }
         
+        .sfx-clip-container {
+            margin-top: 8px;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            background: #0f3460;
+            padding: 10px;
+            border-radius: 4px;
+            width: 100%;
+        }
+        
+        .time-inputs {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            font-size: 12px;
+        }
+        
+        .time-inputs input {
+            width: 50px;
+            padding: 2px 4px;
+            background: #1a1a2e;
+            color: white;
+            border: 1px solid #444;
+            border-radius: 3px;
+        }
+        
         .controls {
             margin-top: 16px;
             padding: 16px;
@@ -190,15 +217,38 @@
                 seq.files.forEach((f, idx) => {
                     const shortLabel = extractLabel(f.filename);
                     const radioId = `seq${seq.sequence}_opt${idx}`;
-                    html += `<div class="file-option">
-                        <input type="radio" 
-                               name="seq${seq.sequence}" 
-                               id="${radioId}" 
-                               value="${f.filename}"
-                               data-seq="${seq.sequence}"
-                               data-filename="${f.filename}">
-                        <label for="${radioId}">${shortLabel}</label>
-                        <button type="button" class="play-btn" data-seq="${seq.sequence}" data-filename="${f.filename}">▶</button>
+                    const isSfx = f.filename.toLowerCase().includes('sfx');
+                    
+                    html += `<div class="file-option" style="width: 100%; margin-bottom: 8px;">
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <input type="radio" 
+                                   name="seq${seq.sequence}" 
+                                   id="${radioId}" 
+                                   value="${f.filename}"
+                                   data-seq="${seq.sequence}"
+                                   data-filename="${f.filename}">
+                            <label for="${radioId}">${shortLabel}</label>
+                            <button type="button" class="play-btn" data-seq="${seq.sequence}" data-filename="${f.filename}">▶</button>
+                            <span class="runtime-display" data-filename="${f.filename}" style="font-size: 11px; margin-left: 5px; color: #aaa;">0.00 / ${f.duration.toFixed(2)}</span>
+                            ${isSfx ? `
+                                <div class="file-option" style="margin-left: 15px;">
+                                    <input type="checkbox" 
+                                           id="extract_${seq.sequence}_${idx}" 
+                                           class="extract-toggle" 
+                                           data-seq="${seq.sequence}" 
+                                           data-filename="${f.filename}">
+                                    <label for="extract_${seq.sequence}_${idx}">Extract Part</label>
+                                </div>
+                            ` : ''}
+                        </div>
+                        ${isSfx ? `
+                        <div class="sfx-clip-container" id="clip_container_${seq.sequence}_${idx}" data-seq="${seq.sequence}" data-filename="${f.filename}">
+                            <div class="time-inputs">
+                                Start: <input type="text" class="start-time" value="0.0">
+                                End: <input type="text" class="end-time" value="${f.duration.toFixed(2)}">
+                            </div>
+                        </div>
+                        ` : ''}
                     </div>`;
                 });
                 
@@ -254,7 +304,7 @@
                 btn.addEventListener('click', (e) => {
                     e.preventDefault();
                     const filename = btn.dataset.filename;
-                    playPreview(filename);
+                    togglePlay(btn, filename);
                 });
             });
 
@@ -267,16 +317,66 @@
                 });
             });
 
+            // Extract Part checkboxes
+            document.querySelectorAll('.extract-toggle').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    const seq = e.target.dataset.seq;
+                    const filename = e.target.dataset.filename;
+                    const container = document.getElementById(`clip_container_${seq}_${e.target.id.split('_').pop()}`);
+                    if (container) {
+                        container.style.display = e.target.checked ? 'flex' : 'none';
+                    }
+                });
+            });
+
+            // SFX Time Text Inputs
+            document.querySelectorAll('.start-time, .end-time').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    // No longer updating sliders
+                });
+            });
+
             // Concatenate button
             document.getElementById('concatBtn').addEventListener('click', concatenate);
         }
 
-        function playPreview(filename) {
+        function togglePlay(btn, filename) {
             const player = document.getElementById('previewPlayer');
-            const url = `${API_BASE}/api/audio/${encodeURIComponent(filename)}`;
-            console.log('Playing:', url);
-            player.src = url;
-            player.play().catch(err => console.error('Failed to play:', err));
+            
+            if (player.src && player.src.includes(encodeURIComponent(filename)) && !player.paused) {
+                player.pause();
+                btn.textContent = '▶';
+            } else {
+                const url = `${API_BASE}/api/audio/${encodeURIComponent(filename)}`;
+                player.src = url;
+                player.play().catch(err => console.error('Failed to play:', err));
+                btn.textContent = '⏸';
+                
+                // Reset other play buttons to play state
+                document.querySelectorAll('.play-btn').forEach(b => {
+                    if (b !== btn) b.textContent = '▶';
+                });
+            }
+        }
+
+        // Update runtime display
+        setInterval(() => {
+            const player = document.getElementById('previewPlayer');
+            if (!player.paused) {
+                const filename = player.src.split('/audio/')[1];
+                if (filename) {
+                    const display = document.querySelector(`.runtime-display[data-filename="${decodeURIComponent(filename)}"]`);
+                    if (display) {
+                        const current = player.currentTime.toFixed(2);
+                        const duration = player.duration.toFixed(2);
+                        display.textContent = `${current} / ${duration}`;
+                    }
+                }
+            }
+        }, 100);
+
+        function playPreview(filename) {
+            // Deprecated in favor of togglePlay
         }
 
         async function concatenate() {
@@ -295,7 +395,26 @@
             const list = [];
             
             sequences.forEach(seq => {
-                list.push(selectedBySequence[seq]);
+                const filename = selectedBySequence[seq];
+                const isSfx = filename.toLowerCase().includes('sfx');
+                
+                if (isSfx) {
+                    const extractCheckbox = document.querySelector(`.extract-toggle[data-seq="${seq}"][data-filename="${filename}"]`);
+                    if (extractCheckbox && extractCheckbox.checked) {
+                        const container = document.getElementById(`clip_container_${seq}_${extractCheckbox.id.split('_').pop()}`);
+                        const start = container.querySelector('.start-time').value;
+                        const end = container.querySelector('.end-time').value;
+                        list.push({
+                            filename: filename,
+                            start_time: parseFloat(start),
+                            end_time: parseFloat(end)
+                        });
+                    } else {
+                        list.push(filename);
+                    }
+                } else {
+                    list.push(filename);
+                }
                 
                 const checkbox = document.getElementById(`silence_${seq}`);
                 if (checkbox && checkbox.checked) {
