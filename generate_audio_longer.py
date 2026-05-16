@@ -57,6 +57,16 @@ DEFAULT_VOICE_KEY = "default_voice"
 OUTPUT_DIR = "generated_audio"
 DEFAULT_GENERATION_COUNT = 7
 
+GENERATION_MODIFIERS = [
+    (0.7, 1.2, 0.9),  # Version 0: Subdued
+    (1.1, 0.8, 1.1),  # Version 1: Slightly exaggerated
+    (0.5, 1.5, 0.7),  # Version 2: Very stable/flat
+    (1.0, 1.0, 1.0),  # Version 3: Base (Standard)
+    (1.3, 0.7, 1.2),  # Version 4: High energy
+    (0.8, 1.1, 0.8),  # Version 5: Muted/Soft
+    (1.5, 0.6, 1.4),  # Version 6: Extreme/Emotive
+]
+
 # ==================== UTILITIES ====================
 
 def setup_logger():
