@@ -49,7 +49,8 @@ VOICE_PATHS = {}
 if os.path.exists("voice_paths.json"):
     try:
         with open("voice_paths.json", "r") as f:
-            VOICE_PATHS = json.load(f)
+            raw_paths = json.load(f)
+            VOICE_PATHS = {k.upper(): v for k, v in raw_paths.items()}
     except (json.JSONDecodeError, FileNotFoundError):
         pass
 
@@ -290,10 +291,10 @@ class DialogueGenerator:
         original_text = segment['original_text']
         
         # Get voice path
-        voice_path = VOICE_PATHS.get(speaker_name, VOICE_PATHS.get(DEFAULT_VOICE_KEY))
+        voice_path = VOICE_PATHS.get(speaker_name.upper(), VOICE_PATHS.get(DEFAULT_VOICE_KEY.upper()))
         if not voice_path or not os.path.exists(voice_path):
             logger.warning(f"Voice file not found for {speaker_name}. Using fallback.")
-            voice_path = VOICE_PATHS.get(DEFAULT_VOICE_KEY)
+            voice_path = VOICE_PATHS.get(DEFAULT_VOICE_KEY.upper())
         
         # Detect emotion
         emotion = self.detect_emotion(text)
