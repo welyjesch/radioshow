@@ -3,7 +3,7 @@
 Generate dialogue and sound effects audio from a script file to create a radio drama type show, making it easy to produce user-generated content for better than average AI Slop YouTube videos. Cheapest alternative to premium TTS models. 
 
 ## Example Result
-<audio controls src="example_output.wav"></audio>
+[▶ Play Example Output](example_output.wav)
 *Note: This example is lazily done. It was generated using the turbo version in 20 minutes (install included), which is why the voices sound somewhat flat and there's no QA done. All audio was generated*
 
 ## Quick Start
