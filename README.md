@@ -1,12 +1,30 @@
-# Audio Generation System: Chatterbox + AudioLDM2
+# RadioShow: AI Radio Drama Generator
 
-Generate dialogue and sound effects audio from a script file with emotion-based voice modulation.
+Generate dialogue and sound effects audio from a script file to create a radio drama type show, making it easy to produce user-generated content for better than average AI Slop YouTube videos. Cheapest alternative to premium TTS models. 
+
+## Example Result
+<audio controls src="example_output.wav"></audio>
+*Note: This example is lazily done. It was generated using the turbo version in 20 minutes (install included), which is why the voices sound somewhat flat and there's no QA done. All audio was generated*
 
 ## Quick Start
 
-Due to dependency conflicts between the TTS and SFX models, the process is split into two stages.
+### Using Google Colab
+```bash
+!git clone https://github.com/welyjesch/radioshow.git
+%cd /content/radioshow
+!uv run generate_audio.py sample_script.txt -c 1
+!uv run generate_sfx.py --tasks-file generated_audio/sfx_tasks.json
+```
+After generating the audio, you can run the Flask server:
+```bash
+uv run backend/app.py
+```
+*Tip: Use **ngrok** or **zrok** to create a public endpoint to view the interface outside of Colab.*
 
-### Stage 1: Dialogue Generation
+### Local Setup
+Due to dependency conflicts between the TTS and SFX models, the process is split into two stages. **You must generate the dialogues first using the generate_audio scripts before running the generate_sfx script.**
+
+#### Stage 1: Dialogue Generation
 ```bash
 # Generate dialogue and create sfx_tasks.json
 uv run generate_audio.py sample_script.txt --output-dir my_audio
@@ -54,6 +72,8 @@ Or emotion is auto-detected from dialogue text if no explicit tag is present.
 
 ## Voice Configuration
 
+The project uses **zero-shot voice cloning** from voice samples. It comes with sample voices derived from compressed Minimax audio samples; however, we highly recommend using your own high-quality samples for better results.
+
 Create `voice_paths.json` in the same directory with speaker-to-voice mappings:
 
 ```json
@@ -87,8 +107,8 @@ Examples:
 
 ### Dialogue Generation
 The system provides two generation scripts depending on the required quality:
-- `generate_audio.py`: Uses **chatterbox-turbo (300m)** for fast, straight-forward voice acting.
-- `generate_audio_longer.py`: Uses **chatterbox (500m)** for higher quality and more emotive voice acting.
+- `generate_audio.py`: Uses **chatterbox-turbo (300m)** for fast, straight-forward voice acting. Note that emotion tags have little effect with this model.
+- `generate_audio_longer.py`: Uses the full **chatterbox (500m)** model for higher quality and significantly more emotive voice acting. Use this for better emotional expression.
 
 ```bash
 uv run generate_audio.py <script> [options]
@@ -125,7 +145,7 @@ Options:
 4. **File Output**: 
    - Saves each generation as individual WAV file
    - Names reflect sequence, generation count, speaker/type, and content summary
-
+5. I added a Flask-based Web UI to concatenate audio for quick tests. For production use, it's best if you used a DAW instead (like Reaper) to clean, normalize, upsample(FFT) and add additional effects to the sound files.
 ## Features
 
 - ✅ Emotion-based voice modulation for dialogue
