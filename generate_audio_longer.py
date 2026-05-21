@@ -26,6 +26,7 @@ from transformers import pipeline
 from chatterbox.tts import ChatterboxTTS
 import scipy.io.wavfile as wavfile
 from pydub import AudioSegment
+from cloud_cfg_provider import get_cfg_settings_from_cloud
 
 # ==================== CONFIGURATION ====================
 
@@ -243,17 +244,12 @@ def parse_script(script_path: str) -> List[Dict]:
 class DialogueGenerator:
     def __init__(self):
         self.model = None
-        self.classifier = None
     
     def initialize(self):
         """Load models once."""
         if self.model is None:
             logger.info("Loading ChatterboxTTS model...")
             self.model = ChatterboxTTS.from_pretrained(device="cuda")
-            logger.info("Loading emotion classifier...")
-            self.classifier = pipeline("text-classification", 
-                                      model="j-hartmann/emotion-english-distilroberta-base", 
-                                      top_k=None)
     
     def unload(self):
         """Unload models from memory."""
@@ -261,21 +257,7 @@ class DialogueGenerator:
             logger.info("Unloading ChatterboxTTS model...")
             del self.model
             self.model = None
-        if self.classifier is not None:
-            del self.classifier
-            self.classifier = None
         torch.cuda.empty_cache()
-    
-    def detect_emotion(self, text: str) -> str:
-        """Detect dominant emotion from text."""
-        try:
-            results = self.classifier(text)[0]
-            sorted_results = sorted(results, key=lambda x: x['score'], reverse=True)
-            dominant = sorted_results[0]
-            return dominant['label'].lower()
-        except Exception as e:
-            logger.warning(f"Emotion detection failed: {e}. Using neutral.")
-            return "neutral"
     
     def generate(self, segment: Dict, gen_count: int) -> List[torch.Tensor]:
         """Generate N audio versions for a dialogue segment."""
@@ -291,9 +273,9 @@ class DialogueGenerator:
             logger.warning(f"Voice file not found for {speaker_name}. Using fallback.")
             voice_path = VOICE_PATHS.get(DEFAULT_VOICE_KEY.upper())
         
-        # Detect emotion
-        emotion = self.detect_emotion(text)
-        params = EMOTION_PARAMETERS.get(emotion, EMOTION_PARAMETERS['neutral'])
+        # Get CFG settings from cloud model
+        api_key = os.environ.get("OLLAMA_API_KEY", "your_api_key_here")
+        params = get_cfg_settings_from_cloud(original_text, api_key)
         
         # Strip parentheses-enclosed tags (emotion/delivery markers) from text
         # These should not be spoken aloud
