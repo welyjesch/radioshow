@@ -226,8 +226,9 @@ def parse_script(script_path: str) -> List[Dict]:
 # ==================== AUDIO GENERATORS ====================
 
 class DialogueGenerator:
-    def __init__(self):
+    def __init__(self, api_key: str):
         self.model = None
+        self.api_key = api_key
     
     def initialize(self):
         """Load models once."""
@@ -264,8 +265,7 @@ class DialogueGenerator:
             # but the model.generate will likely fail if voice_path is None.
         
         # Get CFG settings from cloud model
-        api_key = os.environ.get("OLLAMA_API_KEY", "your_api_key_here")
-        params = get_cfg_settings_from_cloud(original_text, api_key)
+        params = get_cfg_settings_from_cloud(original_text, self.api_key)
         
         # Strip parentheses-enclosed tags (emotion/delivery markers) from text
         # These should not be spoken aloud
@@ -370,6 +370,8 @@ def main():
                        help=f"Number of versions to generate per segment (default: {DEFAULT_GENERATION_COUNT})")
     parser.add_argument("--output-dir", "-o", default=OUTPUT_DIR,
                        help=f"Output directory (default: {OUTPUT_DIR})")
+    parser.add_argument("--apikey", type=str, default=os.environ.get("OLLAMA_API_KEY", "your_api_key_here"),
+                       help="API key for cloud CFG provider (defaults to OLLAMA_API_KEY env var)")
     
     args = parser.parse_args()
     
@@ -402,7 +404,7 @@ def main():
     logger.info("PASS 1: Processing dialogue segments (Chatterbox)")
     logger.info("=" * 60)
     
-    dialogue_gen = DialogueGenerator()
+    dialogue_gen = DialogueGenerator(api_key=args.apikey)
     
     for segment in dialogue_segments:
         try:
