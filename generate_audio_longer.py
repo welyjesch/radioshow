@@ -30,12 +30,14 @@ from cloud_cfg_provider import get_cfg_settings_from_cloud
 # ==================== CONFIGURATION ====================
 
 # Load voice paths from voice_paths.json if it exists
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+VOICE_PATHS_FILE = os.path.join(SCRIPT_DIR, "voice_paths.json")
 VOICE_PATHS = {}
-if os.path.exists("voice_paths.json"):
+if os.path.exists(VOICE_PATHS_FILE):
     try:
-        with open("voice_paths.json", "r") as f:
+        with open(VOICE_PATHS_FILE, "r") as f:
             raw_paths = json.load(f)
-            VOICE_PATHS = {k.upper(): v for k, v in raw_paths.items()}
+            VOICE_PATHS = {k.upper(): os.path.join(SCRIPT_DIR, v) for k, v in raw_paths.items()}
     except (json.JSONDecodeError, FileNotFoundError):
         pass
 
@@ -255,6 +257,8 @@ class DialogueGenerator:
         params = get_cfg_settings_from_cloud(original_text, self.api_key)
         
         # Strip parentheses-enclosed tags (emotion/delivery markers) from text
+        text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', text).strip()
+        text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
         
         audio_tensors = []
         final_params = []

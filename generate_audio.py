@@ -30,12 +30,14 @@ from cloud_cfg_provider import get_cfg_settings_from_cloud
 # ==================== CONFIGURATION ====================
 
 # Load voice paths from voice_paths.json if it exists
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+VOICE_PATHS_FILE = os.path.join(SCRIPT_DIR, "voice_paths.json")
 VOICE_PATHS = {}
-if os.path.exists("voice_paths.json"):
+if os.path.exists(VOICE_PATHS_FILE):
     try:
-        with open("voice_paths.json", "r") as f:
+        with open(VOICE_PATHS_FILE, "r") as f:
             raw_paths = json.load(f)
-            VOICE_PATHS = {k.upper(): v for k, v in raw_paths.items()}
+            VOICE_PATHS = {k.upper(): os.path.join(SCRIPT_DIR, v) for k, v in raw_paths.items()}
     except (json.JSONDecodeError, FileNotFoundError):
         pass
 
@@ -399,9 +401,9 @@ def main():
                         "filename": filename,
                         "transcription": segment['text'],
                         "duration": duration,
-                        "exaggeration": gen_params['exaggeration'],
-                        "cfg_weight": gen_params['cfg_weight'],
-                        "temperature": gen_params['temperature']
+                        "exaggeration": gen_params['exaggeration'] if gen_params else None,
+                        "cfg_weight": gen_params['cfg_weight'] if gen_params else None,
+                        "temperature": gen_params['temperature'] if gen_params else None
                     }
                     
                     metadata_path = os.path.join(args.output_dir, "generation_metadata.json")
