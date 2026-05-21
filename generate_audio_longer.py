@@ -22,28 +22,12 @@ import torch
 import torchaudio as ta
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
-from transformers import pipeline
 from chatterbox.tts import ChatterboxTTS
 import scipy.io.wavfile as wavfile
 from pydub import AudioSegment
 from cloud_cfg_provider import get_cfg_settings_from_cloud
 
 # ==================== CONFIGURATION ====================
-
-EMOTION_PARAMETERS: Dict[str, Dict[str, float]] = {
-    "excited": {"exaggeration": 0.95, "cfg_weight": 0.2, "temperature": 1.3},
-    "happy": {"exaggeration": 0.8, "cfg_weight": 0.3, "temperature": 1.1},
-    "enthusiastic": {"exaggeration": 0.9, "cfg_weight": 0.25, "temperature": 1.2},
-    "sad": {"exaggeration": 0.1, "cfg_weight": 0.9, "temperature": 0.4},
-    "angry": {"exaggeration": 0.85, "cfg_weight": 0.2, "temperature": 1.0},
-    "frustrated": {"exaggeration": 0.7, "cfg_weight": 0.3, "temperature": 0.9},
-    "calm": {"exaggeration": 0.2, "cfg_weight": 0.8, "temperature": 0.5},
-    "neutral": {"exaggeration": 0.5, "cfg_weight": 0.5, "temperature": 0.7},
-    "confused": {"exaggeration": 0.4, "cfg_weight": 0.6, "temperature": 0.8},
-    "surprised": {"exaggeration": 0.8, "cfg_weight": 0.3, "temperature": 1.0},
-    "tired": {"exaggeration": 0.05, "cfg_weight": 0.95, "temperature": 0.3},
-    "worried": {"exaggeration": 0.3, "cfg_weight": 0.7, "temperature": 0.6},
-}
 
 # Load voice paths from voice_paths.json if it exists
 VOICE_PATHS = {}
@@ -268,10 +252,16 @@ class DialogueGenerator:
         original_text = segment['original_text']
         
         # Get voice path
-        voice_path = VOICE_PATHS.get(speaker_name.upper(), VOICE_PATHS.get(DEFAULT_VOICE_KEY.upper()))
+        speaker_name_upper = speaker_name.upper()
+        voice_path = VOICE_PATHS.get(speaker_name_upper, VOICE_PATHS.get(DEFAULT_VOICE_KEY.upper()))
         if not voice_path or not os.path.exists(voice_path):
-            logger.warning(f"Voice file not found for {speaker_name}. Using fallback.")
+            logger.warning(f"Voice file not found for {speaker_name} ({speaker_name_upper}). Using fallback.")
             voice_path = VOICE_PATHS.get(DEFAULT_VOICE_KEY.upper())
+        
+        if not voice_path or not os.path.exists(voice_path):
+            logger.error(f"Critical: Default voice path not found. Generation will fail.")
+            # We can't return from here easily without changing method signature, 
+            # but the model.generate will likely fail if voice_path is None.
         
         # Get CFG settings from cloud model
         api_key = os.environ.get("OLLAMA_API_KEY", "your_api_key_here")
@@ -281,6 +271,15 @@ class DialogueGenerator:
         # These should not be spoken aloud
         text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', text).strip()
         text_for_tts = re.sub(r'\s+', ' ', text_for_tts)
+        
+        # Determine emotion for logging (since it's used in the logger below)
+        # The original code used 'emotion' which was undefined in this scope
+        emotion = "unknown"
+        # Try to find if there was an explicit emotion in the segment
+        # Note: parse_script sets 'explicit_emotion' but it's not passed in 'segment' 
+        # in the current DialogueGenerator.generate call unless it's in the dict.
+        # Let's check the segment dict.
+        emotion = segment.get('explicit_emotion', 'unknown')
         
         logger.info(f"Generating {gen_count} versions for '{speaker_name}': {text_for_tts[:40]}... "
                    f"(emotion: {emotion})")

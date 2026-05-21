@@ -22,28 +22,12 @@ import torch
 import torchaudio as ta
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
-from transformers import pipeline
 from chatterbox.tts_turbo import ChatterboxTurboTTS
 import scipy.io.wavfile as wavfile
 from pydub import AudioSegment
 from cloud_cfg_provider import get_cfg_settings_from_cloud
 
 # ==================== CONFIGURATION ====================
-
-EMOTION_PARAMETERS: Dict[str, Dict[str, float]] = {
-    "excited": {"exaggeration": 0.95, "cfg_weight": 0.2, "temperature": 1.3},
-    "happy": {"exaggeration": 0.8, "cfg_weight": 0.3, "temperature": 1.1},
-    "enthusiastic": {"exaggeration": 0.9, "cfg_weight": 0.25, "temperature": 1.2},
-    "sad": {"exaggeration": 0.1, "cfg_weight": 0.9, "temperature": 0.4},
-    "angry": {"exaggeration": 0.85, "cfg_weight": 0.2, "temperature": 1.0},
-    "frustrated": {"exaggeration": 0.7, "cfg_weight": 0.3, "temperature": 0.9},
-    "calm": {"exaggeration": 0.2, "cfg_weight": 0.8, "temperature": 0.5},
-    "neutral": {"exaggeration": 0.5, "cfg_weight": 0.5, "temperature": 0.7},
-    "confused": {"exaggeration": 0.4, "cfg_weight": 0.6, "temperature": 0.8},
-    "surprised": {"exaggeration": 0.8, "cfg_weight": 0.3, "temperature": 1.0},
-    "tired": {"exaggeration": 0.05, "cfg_weight": 0.95, "temperature": 0.3},
-    "worried": {"exaggeration": 0.3, "cfg_weight": 0.7, "temperature": 0.6},
-}
 
 # Load voice paths from voice_paths.json if it exists
 VOICE_PATHS = {}
