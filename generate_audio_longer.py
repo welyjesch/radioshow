@@ -27,20 +27,6 @@ import scipy.io.wavfile as wavfile
 from pydub import AudioSegment
 from cloud_cfg_provider import get_cfg_settings_from_cloud
 
-# ==================== CONFIGURATION ====================
-
-# Load voice paths from voice_paths.json if it exists
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-VOICE_PATHS_FILE = os.path.join(SCRIPT_DIR, "voice_paths.json")
-VOICE_PATHS = {}
-if os.path.exists(VOICE_PATHS_FILE):
-    try:
-        with open(VOICE_PATHS_FILE, "r") as f:
-            raw_paths = json.load(f)
-            VOICE_PATHS = {k.upper(): os.path.join(SCRIPT_DIR, v) for k, v in raw_paths.items()}
-    except (json.JSONDecodeError, FileNotFoundError):
-        pass
-
 DEFAULT_VOICE_KEY = "default_voice"
 OUTPUT_DIR = "generated_audio"
 DEFAULT_GENERATION_COUNT = 7
@@ -64,6 +50,22 @@ def setup_logger():
     return logging.getLogger(__name__)
 
 logger = setup_logger()
+
+# Load voice paths from voice_paths.json if it exists
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+VOICE_PATHS_FILE = os.path.join(SCRIPT_DIR, "voice_paths.json")
+VOICE_PATHS = {}
+logger.info(f"Checking for voice paths config at: {VOICE_PATHS_FILE}")
+if os.path.exists(VOICE_PATHS_FILE):
+    try:
+        with open(VOICE_PATHS_FILE, "r") as f:
+            raw_paths = json.load(f)
+            VOICE_PATHS = {k.upper(): os.path.join(SCRIPT_DIR, v) for k, v in raw_paths.items()}
+            logger.info(f"Loaded voice paths map:\n{json.dumps(VOICE_PATHS, indent=2)}")
+    except Exception as e:
+        logger.error(f"Error loading voice_paths.json: {e}")
+else:
+    logger.warning(f"voice_paths.json not found at {VOICE_PATHS_FILE}")
 
 def sanitize_filename(text, max_length=16):
     """Convert text to safe filename."""
@@ -243,15 +245,16 @@ class DialogueGenerator:
         
         # Get voice path
         speaker_name_upper = speaker_name.upper()
-        voice_path = VOICE_PATHS.get(speaker_name_upper, VOICE_PATHS.get(DEFAULT_VOICE_KEY.upper()))
-        if not voice_path or not os.path.exists(voice_path):
-            logger.warning(f"Voice file not found for {speaker_name} ({speaker_name_upper}). Using fallback.")
-            voice_path = VOICE_PATHS.get(DEFAULT_VOICE_KEY.upper())
+        voice_path = VOICE_PATHS.get(speaker_name_upper)
+        logger.info(f"Checking voice path for '{speaker_name}': '{voice_path}'")
         
         if not voice_path or not os.path.exists(voice_path):
-            logger.error(f"Critical: Default voice path not found. Generation will fail.")
-            # We can't return from here easily without changing method signature, 
-            # but the model.generate will likely fail if voice_path is None.
+            fallback_path = VOICE_PATHS.get(DEFAULT_VOICE_KEY.upper())
+            logger.warning(f"Voice file '{voice_path}' not found for speaker '{speaker_name}'. Falling back to default: '{fallback_path}'")
+            voice_path = fallback_path
+            
+        if not voice_path or not os.path.exists(voice_path):
+            logger.error(f"Critical: Resolved voice path is invalid or missing: '{voice_path}'. Generation may fail or use model defaults.")
         
         # Get CFG settings from cloud model
         params = get_cfg_settings_from_cloud(original_text, self.api_key)
