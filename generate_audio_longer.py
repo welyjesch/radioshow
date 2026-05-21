@@ -172,18 +172,6 @@ def parse_script(script_path: str) -> List[Dict]:
             current_speaker_name = speaker_match.group(1).upper()
             remaining_text = speaker_match.group(2).strip()
             
-            # Extract explicit emotion from parentheses
-            explicit_emotion = None
-            parenthesized = re.findall(r'\(([^)]+)\)', remaining_text)
-            for phrase in parenthesized:
-                words = re.split(r'[,;\s]+', phrase)
-                for word in words:
-                    if word.lower() in EMOTION_PARAMETERS:
-                        explicit_emotion = word.lower()
-                        break
-                if explicit_emotion:
-                    break
-            
             # Remove parenthesized content for TTS
             text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', remaining_text).strip()
             text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
@@ -191,7 +179,7 @@ def parse_script(script_path: str) -> List[Dict]:
             if text_for_tts:
                 current_block_text_lines.append(text_for_tts)
             
-            # Store emotion info for later use
+            # Store text for later use
             if current_speaker_name and remaining_text and not current_block_text_lines:
                 current_block_text_lines = [text_for_tts]
             
@@ -216,8 +204,7 @@ def parse_script(script_path: str) -> List[Dict]:
                     'sequence': seq_counter,
                     'speaker': current_speaker_name,
                     'text': clean_sentence,
-                    'original_text': line_text,
-                    'explicit_emotion': None
+                    'original_text': line_text
                 })
     
     logger.info(f"Parsed {len(segments)} segments from {script_path}")
@@ -268,21 +255,6 @@ class DialogueGenerator:
         params = get_cfg_settings_from_cloud(original_text, self.api_key)
         
         # Strip parentheses-enclosed tags (emotion/delivery markers) from text
-        # These should not be spoken aloud
-        text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', text).strip()
-        text_for_tts = re.sub(r'\s+', ' ', text_for_tts)
-        
-        # Determine emotion for logging (since it's used in the logger below)
-        # The original code used 'emotion' which was undefined in this scope
-        emotion = "unknown"
-        # Try to find if there was an explicit emotion in the segment
-        # Note: parse_script sets 'explicit_emotion' but it's not passed in 'segment' 
-        # in the current DialogueGenerator.generate call unless it's in the dict.
-        # Let's check the segment dict.
-        emotion = segment.get('explicit_emotion', 'unknown')
-        
-        logger.info(f"Generating {gen_count} versions for '{speaker_name}': {text_for_tts[:40]}... "
-                   f"(emotion: {emotion})")
         
         audio_tensors = []
         final_params = []

@@ -173,18 +173,6 @@ def parse_script(script_path: str) -> List[Dict]:
             current_speaker_name = speaker_match.group(1).upper()
             remaining_text = speaker_match.group(2).strip()
             
-            # Extract explicit emotion from parentheses
-            explicit_emotion = None
-            parenthesized = re.findall(r'\(([^)]+)\)', remaining_text)
-            for phrase in parenthesized:
-                words = re.split(r'[,;\s]+', phrase)
-                for word in words:
-                    if word.lower() in EMOTION_PARAMETERS:
-                        explicit_emotion = word.lower()
-                        break
-                if explicit_emotion:
-                    break
-            
             # Remove parenthesized content for TTS
             text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', remaining_text).strip()
             text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
@@ -192,7 +180,7 @@ def parse_script(script_path: str) -> List[Dict]:
             if text_for_tts:
                 current_block_text_lines.append(text_for_tts)
             
-            # Store emotion info for later use
+            # Store text for later use
             if current_speaker_name and remaining_text and not current_block_text_lines:
                 current_block_text_lines = [text_for_tts]
             
@@ -217,8 +205,7 @@ def parse_script(script_path: str) -> List[Dict]:
                     'sequence': seq_counter,
                     'speaker': current_speaker_name,
                     'text': clean_sentence,
-                    'original_text': line_text,
-                    'explicit_emotion': None
+                    'original_text': line_text
                 })
     
     logger.info(f"Parsed {len(segments)} segments from {script_path}")
@@ -267,8 +254,7 @@ class DialogueGenerator:
         text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', text).strip()
         text_for_tts = re.sub(r'\s+', ' ', text_for_tts)
         
-        logger.info(f"Generating {gen_count} versions for '{speaker_name}': {text_for_tts[:40]}... "
-                   f"(emotion: {emotion})")
+        logger.info(f"Generating {gen_count} versions for '{speaker_name}': {text_for_tts[:40]}...")
         
         audio_tensors = []
         final_params = []
