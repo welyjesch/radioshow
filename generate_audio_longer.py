@@ -28,7 +28,7 @@ from pydub import AudioSegment
 from cloud_cfg_provider import get_cfg_settings_from_cloud
 
 DEFAULT_VOICE_KEY = "default_voice"
-OUTPUT_DIR = "generated_audio"
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated_audio")
 DEFAULT_GENERATION_COUNT = 7
 
 GENERATION_MODIFIERS = [
@@ -51,21 +51,31 @@ def setup_logger():
 
 logger = setup_logger()
 
-# Load voice paths from voice_paths.json if it exists
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-VOICE_PATHS_FILE = os.path.join(SCRIPT_DIR, "voice_paths.json")
-VOICE_PATHS = {}
-logger.info(f"Checking for voice paths config at: {VOICE_PATHS_FILE}")
-if os.path.exists(VOICE_PATHS_FILE):
-    try:
-        with open(VOICE_PATHS_FILE, "r") as f:
-            raw_paths = json.load(f)
-            VOICE_PATHS = {k.upper(): os.path.join(SCRIPT_DIR, v) for k, v in raw_paths.items()}
-            logger.info(f"Loaded voice paths map:\n{json.dumps(VOICE_PATHS, indent=2)}")
-    except Exception as e:
-        logger.error(f"Error loading voice_paths.json: {e}")
-else:
-    logger.warning(f"voice_paths.json not found at {VOICE_PATHS_FILE}")
+class VoiceConfig:
+    def __init__(self):
+        self.paths = {}
+        self.script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.config_file = os.path.join(self.script_dir, "voice_paths.json")
+        self.load_config()
+
+    def load_config(self):
+        logger.info(f"Checking for voice paths config at: {self.config_file}")
+        if os.path.exists(self.config_file):
+            try:
+                with open(self.config_file, "r") as f:
+                    raw_paths = json.load(f)
+                    self.paths = {k.upper(): os.path.join(self.script_dir, v) for k, v in raw_paths.items()}
+                    logger.info(f"Loaded voice paths map:\n{json.dumps(self.paths, indent=2)}")
+            except Exception as e:
+                logger.error(f"Error loading voice_paths.json: {e}")
+        else:
+            logger.warning(f"voice_paths.json not found at {self.config_file}")
+
+    def get_path(self, speaker_name: str) -> Optional[str]:
+        return self.paths.get(speaker_name.upper())
+
+# Initialize voice config
+voice_config = VoiceConfig()
 
 def sanitize_filename(text, max_length=16):
     """Convert text to safe filename."""
@@ -245,11 +255,13 @@ class DialogueGenerator:
         
         # Get voice path
         speaker_name_upper = speaker_name.upper()
-        voice_path = VOICE_PATHS.get(speaker_name_upper)
+        voice_path = voice_config.get_path(speaker_name_upper)
+        
+        print(f"\n\n>>> [VOICE LOAD ATTEMPT] Speaker: {speaker_name_upper} | Path: {voice_path}\n\n")
         logger.info(f"Checking voice path for '{speaker_name}': '{voice_path}'")
         
         if not voice_path or not os.path.exists(voice_path):
-            fallback_path = VOICE_PATHS.get(DEFAULT_VOICE_KEY.upper())
+            fallback_path = voice_config.get_path(DEFAULT_VOICE_KEY)
             logger.warning(f"Voice file '{voice_path}' not found for speaker '{speaker_name}'. Falling back to default: '{fallback_path}'")
             voice_path = fallback_path
             
