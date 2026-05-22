@@ -31,15 +31,6 @@ DEFAULT_VOICE_KEY = "default_voice"
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated_audio")
 DEFAULT_GENERATION_COUNT = 7
 
-GENERATION_MODIFIERS = [
-    (0.7, 1.2, 0.9),  # Version 0: Subdued
-    (1.1, 0.8, 1.1),  # Version 1: Slightly exaggerated
-    (0.5, 1.5, 0.7),  # Version 2: Very stable/flat
-    (1.0, 1.0, 1.0),  # Version 3: Base (Standard)
-    (1.3, 0.7, 1.2),  # Version 4: High energy
-    (0.8, 1.1, 0.8),  # Version 5: Muted/Soft
-    (1.5, 0.6, 1.4),  # Version 6: Extreme/Emotive
-]
 
 # ==================== UTILITIES ====================
 
@@ -92,18 +83,6 @@ def truncate_text(text, max_length=16):
 def split_sentences(text):
     """Split text into lines."""
     return text.splitlines()
-
-def get_generation_modifiers(gen_idx: int) -> Tuple[float, float, float]:
-    """Get parameter modifiers for a given generation index.
-    
-    Returns (exaggeration_multiplier, cfg_weight_multiplier, temperature_multiplier).
-    For generations beyond the defined list, uses the base (4th generation) modifiers.
-    """
-    if gen_idx < len(GENERATION_MODIFIERS):
-        return GENERATION_MODIFIERS[gen_idx]
-    else:
-        # All generations after the 7th use the 4th generation (base) settings
-        return GENERATION_MODIFIERS[3]
 
 # ==================== SCRIPT PARSER ====================
 
@@ -285,13 +264,10 @@ class DialogueGenerator:
         final_params = []
         for gen_idx in range(gen_count):
             try:
-                # Get modifiers for this generation
-                exaggeration_mult, cfg_weight_mult, temperature_mult = get_generation_modifiers(gen_idx)
-                
-                # Apply modifiers to base parameters
-                modified_exaggeration = params['exaggeration'] * exaggeration_mult
-                modified_cfg_weight = params['cfg_weight'] * cfg_weight_mult
-                modified_temperature = params['temperature'] * temperature_mult
+                # Use base parameters directly
+                modified_exaggeration = params['exaggeration']
+                modified_cfg_weight = params['cfg_weight']
+                modified_temperature = params['temperature']
                 
                 # Generate audio for each chunk and concatenate
                 chunk_audios = []
@@ -314,7 +290,7 @@ class DialogueGenerator:
                     'cfg_weight': modified_cfg_weight,
                     'temperature': modified_temperature
                 })
-                logger.info(f"  Generated version {gen_idx + 1}/{gen_count} (modifiers: {exaggeration_mult}x, {cfg_weight_mult}x, {temperature_mult}x)")
+                logger.info(f"  Generated version {gen_idx + 1}/{gen_count} (using base cloud params)")
             except Exception as e:
                 logger.error(f"Failed to generate version {gen_idx + 1}: {e}")
                 final_params.append(None)

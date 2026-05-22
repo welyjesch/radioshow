@@ -30,8 +30,12 @@ def get_cfg_settings_from_cloud(text_line: str, api_key: str) -> dict:
     prompt = (
         f"Analyze the following line of text, including any cues in parentheses, and determine the appropriate "
         f"audio generation CFG settings (exaggeration, cfg_weight, temperature).\n\n"
+        f"CONSTRAINTS:\n"
+        f"- set cfg_weight at max of 0.7\n"
+        f"- set exaggeration at min of 0.6\n"
+        f"- all cfg temperature should be set at 1.0\n\n"
         f"CRITICAL: Pay special attention to directorial cues enclosed in parentheses. For example, if the text contains '(angry)', "
-        f"you MUST use the 'angry' or 'upset' reference parameters as the primary basis for the settings.\n\n"
+        f"you MUST use the reference emotion preset parameters as the primary basis for the settings.\n\n"
         f"Reference Presets:\n{json.dumps(emotion_presets, indent=2)}\n\n"
         f"Text Line: \"{text_line}\"\n\n"
         f"Respond ONLY with a JSON object containing the keys 'exaggeration', 'cfg_weight', and 'temperature'. "
