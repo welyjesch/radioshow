@@ -1,6 +1,7 @@
 {
-  "NARRATOR": "voices/deep male voice 1.mp3",
-  "ELIAS": "voices/male british voice 2.mp3",
-  "BOARD MEMBER VANE": "voices/female friendly voice 1.mp3",
-  "default_voice": "voices/default_voice.wav"
+  "COWBOY": "voices/male southern grave.mp3",
+  "PRISONER 1": "voices/male pirate voice 1.mp3",
+  "OVERSEER": "voices/male scholar voice 2.mp3",
+  "PROGENITOR": "voices/male metallic voice 1.mp3",
+  "DEFAULT": "voices/male southern grave.mp3"
 }
