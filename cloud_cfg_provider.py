@@ -30,6 +30,8 @@ def get_cfg_settings_from_cloud(text_line: str, api_key: str) -> dict:
     prompt = (
         f"Analyze the following line of text, including any cues in parentheses, and determine the appropriate "
         f"audio generation CFG settings (exaggeration, cfg_weight, temperature).\n\n"
+        f"CRITICAL: Pay special attention to directorial cues enclosed in parentheses. For example, if the text contains '(angry)', "
+        f"you MUST use the 'angry' or 'upset' reference parameters as the primary basis for the settings.\n\n"
         f"Reference Presets:\n{json.dumps(emotion_presets, indent=2)}\n\n"
         f"Text Line: \"{text_line}\"\n\n"
         f"Respond ONLY with a JSON object containing the keys 'exaggeration', 'cfg_weight', and 'temperature'. "
@@ -55,6 +57,7 @@ def get_cfg_settings_from_cloud(text_line: str, api_key: str) -> dict:
         
         # Ollama usually returns the text in the 'response' field
         settings = json.loads(result.get("response", "{}"))
+        logger.info(f"Cloud CFG settings for line [{text_line}]: {settings}")
         return settings
     except Exception as e:
         logger.error(f"Error querying cloud model for CFG settings: {e}")

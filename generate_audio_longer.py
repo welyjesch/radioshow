@@ -275,6 +275,10 @@ class DialogueGenerator:
         text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', text).strip()
         text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
         
+        # Split text into chunks of maximum 24 words
+        words = text_for_tts.split()
+        chunks = [' '.join(words[i:i + 24]) for i in range(0, len(words), 24)]
+        
         audio_tensors = []
         final_params = []
         for gen_idx in range(gen_count):
@@ -287,14 +291,22 @@ class DialogueGenerator:
                 modified_cfg_weight = params['cfg_weight'] * cfg_weight_mult
                 modified_temperature = params['temperature'] * temperature_mult
                 
-                audio = self.model.generate(
-                    text_for_tts,
-                    audio_prompt_path=voice_path,
-                    exaggeration=modified_exaggeration,
-                    cfg_weight=modified_cfg_weight,
-                    temperature=modified_temperature
-                )
-                audio_tensors.append(audio)
+                # Generate audio for each chunk and concatenate
+                chunk_audios = []
+                for chunk in chunks:
+                    audio = self.model.generate(
+                        chunk,
+                        audio_prompt_path=voice_path,
+                        exaggeration=modified_exaggeration,
+                        cfg_weight=modified_cfg_weight,
+                        temperature=modified_temperature
+                    )
+                    chunk_audios.append(audio)
+                
+                # Concatenate all chunks for this generation
+                full_audio = torch.cat(chunk_audios, dim=-1)
+                audio_tensors.append(full_audio)
+                
                 final_params.append({
                     'exaggeration': modified_exaggeration,
                     'cfg_weight': modified_cfg_weight,
