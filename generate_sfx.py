@@ -1,7 +1,7 @@
 # /// script
 # requires-python = "==3.12.*"
 # dependencies = [
-#     "tangoflux",
+#     "tango",
 #     "torch",
 # ]
 # ///
@@ -14,7 +14,7 @@ import logging
 import torch
 import numpy as np
 from typing import List, Dict
-from tangoflux import TangoFluxInference
+from tango import Tango
 import torchaudio
 from script_logger import log_to_script_map
 
@@ -85,16 +85,16 @@ class SFXGenerator:
         self.model = None
     
     def initialize(self):
-        """Load TangoFlux model once."""
+        """Load Tango model once."""
         if self.model is None:
-            logger.info("Loading TangoFlux model...")
-            self.model = TangoFluxInference(name='declare-lab/TangoFlux')
-            logger.info("TangoFlux model loaded.")
+            logger.info("Loading Tango model...")
+            self.model = Tango('declare-lab/tango2-full')
+            logger.info("Tango model loaded.")
     
     def unload(self):
         """Unload model from memory."""
         if self.model is not None:
-            logger.info("Unloading TangoFlux model...")
+            logger.info("Unloading Tango model...")
             del self.model
             self.model = None
         torch.cuda.empty_cache()
@@ -115,8 +115,7 @@ class SFXGenerator:
                 # For now, we follow the provided example.
                 audio = self.model.generate(
                     sfx_description, 
-                    steps=50, 
-                    duration=10
+                    step=200
                 )
                 
                 audio_tensors.append(audio)
