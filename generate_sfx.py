@@ -3,7 +3,6 @@
 # dependencies = [
 #     "tangoflux",
 #     "torch",
-#     "scipy==1.13.0",
 # ]
 # ///
 
@@ -16,7 +15,7 @@ import torch
 import numpy as np
 from typing import List, Dict
 from tangoflux import TangoFluxInference
-import scipy.io.wavfile as wavfile
+import torchaudio
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -46,16 +45,22 @@ def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
         if torch.is_tensor(audio_np):
             audio_np = audio_np.detach().cpu().numpy()
             
-        # Normalize and convert to int16 to avoid 'H' format errors
-        if audio_np.dtype.kind == 'f':  # Floating point
-            # Normalize to [-1, 1]
-            max_val = np.abs(audio_np).max()
-            if max_val > 0:
-                audio_np = audio_np / max_val
-            # Scale to int16 range
-            audio_np = (audio_np * 32767).astype(np.int16)
+        # 1. Ensure mono and flat
+        if torch.is_tensor(audio_np):
+            audio_np = audio_np.detach().cpu()
+        
+        # Convert to torch tensor if it's numpy for torchaudio
+        if isinstance(audio_np, np.ndarray):
+            audio_np = torch.from_numpy(audio_np)
+
+        # Ensure it's 2D [channels, time]
+        if audio_np.ndim == 1:
+            audio_np = audio_np.unsqueeze(0)
+        
+        torchaudio.save(filepath, audio_np, sample_rate)
             
-        wavfile.write(filepath, sample_rate, audio_np)
+        return filepath
+            
         return filepath
     except Exception as e:
         logger.error(f"Failed to save {filename}: {e}")
