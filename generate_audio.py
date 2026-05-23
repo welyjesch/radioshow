@@ -282,6 +282,9 @@ class DialogueGenerator:
                     )
                     chunk_audios.append(audio)
                 
+                # Log the source text and parameters used for this generation
+                logger.info(f"  [Gen {gen_idx + 1}] Text: {text_for_tts} | Params: exaggeration={modified_exaggeration}, cfg_weight={modified_cfg_weight}, temperature={modified_temperature}")
+
                 # Concatenate all chunks for this generation
                 full_audio = torch.cat(chunk_audios, dim=-1)
                 audio_tensors.append(full_audio)
