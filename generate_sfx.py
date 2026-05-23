@@ -41,6 +41,10 @@ def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
     filepath = os.path.join(output_dir, filename)
     
     try:
+        # Ensure audio_np is a numpy array and not a torch.Tensor
+        if torch.is_tensor(audio_np):
+            audio_np = audio_np.detach().cpu().numpy()
+            
         wavfile.write(filepath, sample_rate, audio_np)
         return filepath
     except Exception as e:
