@@ -25,7 +25,8 @@ from typing import Dict, List, Tuple, Optional
 from chatterbox.tts import ChatterboxTTS
 import scipy.io.wavfile as wavfile
 from pydub import AudioSegment
-from cloud_cfg_provider import get_cfg_settings_from_cloud
+import spacy
+from cloud_cfg_provider import get_cfg_settings_batch_from_cloud
 
 DEFAULT_VOICE_KEY = "default_voice"
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated_audio")
@@ -79,10 +80,22 @@ def truncate_text(text, max_length=16):
     """Truncate text and sanitize for filename."""
     return sanitize_filename(text, max_length)
 
+# Initialize SpaCy model for sentence splitting
+try:
+    nlp = spacy.load("en_core_web_sm")
+except Exception as e:
+    logger.error(f"Failed to load spacy model: {e}")
+    nlp = None
+
 def split_sentences(text):
-    """Split text into lines."""
-    lines = text.splitlines()
-    return [l.strip() for l in lines if l.strip()]
+    """Split text into individual lines using SpaCy."""
+    if nlp:
+        doc = nlp(text)
+        return [sent.text.strip() for sent in doc.sents if sent.text.strip()]
+    else:
+        # Fallback to basic splitlines if spacy fails
+        lines = text.splitlines()
+        return [l.strip() for l in lines if l.strip()]
 
 # ==================== SCRIPT PARSER ====================
 
@@ -108,22 +121,24 @@ def parse_script(script_path: str) -> List[Dict]:
         if sfx_match:
             # Process accumulated dialogue for previous speaker
             if current_block_text_lines and current_speaker_name:
-                # Use the lines as they are, without joining and re-splitting by punctuation
-                for line_text in current_block_text_lines:
-                    if line_text:
-                        seq_counter += 1
-                        # Remove everything between the first '[' and the last ']' for the speaker tag
-                        clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
-                        clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
-                        
-                        segments.append({
-                            'type': 'dialogue',
-                            'sequence': seq_counter,
-                            'speaker': current_speaker_name,
-                            'text': clean_sentence,
-                            'original_text': line_text,
-                            'explicit_emotion': None
-                        })
+                # Use SpaCy to split the accumulated text into individual lines
+                full_block_text = "\n".join(current_block_text_lines)
+                split_lines = split_sentences(full_block_text)
+                
+                for line_text in split_lines:
+                    seq_counter += 1
+                    # Remove everything between the first '[' and the last ']' for the speaker tag
+                    clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
+                    clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
+                    
+                    segments.append({
+                        'type': 'dialogue',
+                        'sequence': seq_counter,
+                        'speaker': current_speaker_name,
+                        'text': clean_sentence,
+                        'original_text': line_text,
+                        'explicit_emotion': None
+                    })
                 current_block_text_lines = []
                 current_speaker_name = None
             
@@ -144,22 +159,24 @@ def parse_script(script_path: str) -> List[Dict]:
         if speaker_match:
             # Process accumulated text for previous speaker
             if current_block_text_lines and current_speaker_name:
-                # Use the lines as they are, without joining and re-splitting by punctuation
-                for line_text in current_block_text_lines:
-                    if line_text:
-                        seq_counter += 1
-                        # Remove everything between the first '[' and the last ']' for the speaker tag
-                        clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
-                        clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
-                        
-                        segments.append({
-                            'type': 'dialogue',
-                            'sequence': seq_counter,
-                            'speaker': current_speaker_name,
-                            'text': clean_sentence,
-                            'original_text': line_text,
-                            'explicit_emotion': None
-                        })
+                # Use SpaCy to split the accumulated text into individual lines
+                full_block_text = "\n".join(current_block_text_lines)
+                split_lines = split_sentences(full_block_text)
+                
+                for line_text in split_lines:
+                    seq_counter += 1
+                    # Remove everything between the first '[' and the last ']' for the speaker tag
+                    clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
+                    clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
+                    
+                    segments.append({
+                        'type': 'dialogue',
+                        'sequence': seq_counter,
+                        'speaker': current_speaker_name,
+                        'text': clean_sentence,
+                        'original_text': line_text,
+                        'explicit_emotion': None
+                    })
                 current_block_text_lines = []
             
             # Set new speaker
@@ -185,21 +202,23 @@ def parse_script(script_path: str) -> List[Dict]:
     
     # Process remaining accumulated text
     if current_block_text_lines and current_speaker_name:
-        # Use the lines as they are, without joining and re-splitting by punctuation
-        for line_text in current_block_text_lines:
-            if line_text:
-                seq_counter += 1
-                # Remove everything between the first '[' and the last ']' for the speaker tag
-                clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
-                clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
-                
-                segments.append({
-                    'type': 'dialogue',
-                    'sequence': seq_counter,
-                    'speaker': current_speaker_name,
-                    'text': clean_sentence,
-                    'original_text': line_text
-                })
+        # Use SpaCy to split the accumulated text into individual lines
+        full_block_text = "\n".join(current_block_text_lines)
+        split_lines = split_sentences(full_block_text)
+        
+        for line_text in split_lines:
+            seq_counter += 1
+            # Remove everything between the first '[' and the last ']' for the speaker tag
+            clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
+            clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
+            
+            segments.append({
+                'type': 'dialogue',
+                'sequence': seq_counter,
+                'speaker': current_speaker_name,
+                'text': clean_sentence,
+                'original_text': line_text
+            })
     
     logger.info(f"Parsed {len(segments)} segments from {script_path}")
     return segments
@@ -225,78 +244,78 @@ class DialogueGenerator:
             self.model = None
         torch.cuda.empty_cache()
     
-    def generate(self, segment: Dict, gen_count: int) -> List[torch.Tensor]:
-        """Generate N audio versions for a dialogue segment."""
+    def generate_batch(self, segments: List[Dict], gen_count: int) -> List[Tuple[List[torch.Tensor], List[dict]]]:
+        """Generate audio for a batch of dialogue segments."""
         self.initialize()
         
-        speaker_name = segment['speaker']
-        text = segment['text']
-        original_text = segment['original_text']
+        # 1. Batch request CFG settings from cloud
+        original_texts = [s['original_text'] for s in segments]
+        cfg_map = get_cfg_settings_batch_from_cloud(original_texts, self.api_key)
         
-        # Get voice path
-        speaker_name_upper = speaker_name.upper()
-        voice_path = voice_config.get_path(speaker_name_upper)
+        batch_results = []
         
-        print(f"\n\n>>> [VOICE LOAD ATTEMPT] Speaker: {speaker_name_upper} | Path: {voice_path}\n\n")
-        logger.info(f"Checking voice path for '{speaker_name}': '{voice_path}'")
-        
-        if not voice_path or not os.path.exists(voice_path):
-            fallback_path = voice_config.get_path(DEFAULT_VOICE_KEY)
-            logger.warning(f"Voice file '{voice_path}' not found for speaker '{speaker_name}'. Falling back to default: '{fallback_path}'")
-            voice_path = fallback_path
+        for segment in segments:
+            speaker_name = segment['speaker']
+            text = segment['text']
+            original_text = segment['original_text']
             
-        if not voice_path or not os.path.exists(voice_path):
-            logger.error(f"Critical: Resolved voice path is invalid or missing: '{voice_path}'. Generation may fail or use model defaults.")
-        
-        # Get CFG settings from cloud model
-        params = get_cfg_settings_from_cloud(original_text, self.api_key)
-        
-        # Strip parentheses-enclosed tags (emotion/delivery markers) from text
-        text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', text).strip()
-        text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
-        
-        # Split text into chunks of maximum 24 words
-        words = text_for_tts.split()
-        chunks = [' '.join(words[i:i + 24]) for i in range(0, len(words), 24)]
-        
-        audio_tensors = []
-        final_params = []
-        for gen_idx in range(gen_count):
-            try:
-                # Use base parameters directly
-                modified_exaggeration = params['exaggeration']
-                modified_cfg_weight = params['cfg_weight']
-                modified_temperature = params['temperature']
+            # Get voice path
+            speaker_name_upper = speaker_name.upper()
+            voice_path = voice_config.get_path(speaker_name_upper)
+            
+            if not voice_path or not os.path.exists(voice_path):
+                fallback_path = voice_config.get_path(DEFAULT_VOICE_KEY)
+                logger.warning(f"Voice file '{voice_path}' not found for speaker '{speaker_name}'. Falling back to default: '{fallback_path}'")
+                voice_path = fallback_path
                 
-                # Generate audio for each chunk and concatenate
-                chunk_audios = []
-                for chunk in chunks:
-                    audio = self.model.generate(
-                        chunk,
-                        audio_prompt_path=voice_path,
-                        exaggeration=modified_exaggeration,
-                        cfg_weight=modified_cfg_weight,
-                        temperature=modified_temperature
-                    )
-                    chunk_audios.append(audio)
-                
-                # Concatenate all chunks for this generation
-                full_audio = torch.cat(chunk_audios, dim=-1)
-                audio_tensors.append(full_audio)
-                
-                final_params.append({
-                    'exaggeration': modified_exaggeration,
-                    'cfg_weight': modified_cfg_weight,
-                    'temperature': modified_temperature
-                })
-                logger.info(f"  Generated version {gen_idx + 1}/{gen_count} (using base cloud params)")
-            except Exception as e:
-                logger.error(f"Failed to generate version {gen_idx + 1}: {e}")
-                # Append dummy params to keep indices aligned
-                final_params.append(None)
-                continue
-        
-        return audio_tensors, final_params
+            if not voice_path or not os.path.exists(voice_path):
+                logger.error(f"Critical: Resolved voice path is invalid or missing: '{voice_path}'.")
+
+            # Get params from the batch map
+            params = cfg_map.get(original_text, {"exaggeration": 0.5, "cfg_weight": 0.5, "temperature": 0.7})
+            
+            # Strip parentheses-enclosed tags from text
+            text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', text).strip()
+            text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
+            
+            # Split text into chunks of maximum 24 words
+            words = text_for_tts.split()
+            chunks = [' '.join(words[i:i + 24]) for i in range(0, len(words), 24)]
+            
+            audio_tensors = []
+            final_params = []
+            for gen_idx in range(gen_count):
+                try:
+                    modified_exaggeration = params['exaggeration']
+                    modified_cfg_weight = params['cfg_weight']
+                    modified_temperature = params['temperature']
+                    
+                    chunk_audios = []
+                    for chunk in chunks:
+                        audio = self.model.generate(
+                            chunk,
+                            audio_prompt_path=voice_path,
+                            exaggeration=modified_exaggeration,
+                            cfg_weight=modified_cfg_weight,
+                            temperature=modified_temperature
+                        )
+                        chunk_audios.append(audio)
+                    
+                    full_audio = torch.cat(chunk_audios, dim=-1)
+                    audio_tensors.append(full_audio)
+                    final_params.append({
+                        'exaggeration': modified_exaggeration,
+                        'cfg_weight': modified_cfg_weight,
+                        'temperature': modified_temperature
+                    })
+                except Exception as e:
+                    logger.error(f"Failed to generate version {gen_idx + 1} for text '{text[:20]}...': {e}")
+                    final_params.append(None)
+                    continue
+            
+            batch_results.append((audio_tensors, final_params))
+            
+        return batch_results
 
 # ==================== FILE HANDLER ====================
 
@@ -386,51 +405,56 @@ def main():
     
     dialogue_gen = DialogueGenerator(api_key=args.apikey)
     
-    for segment in dialogue_segments:
+    # Process dialogue segments in batches of 20
+    batch_size = 20
+    for i in range(0, len(dialogue_segments), batch_size):
+        batch = dialogue_segments[i : i + batch_size]
         try:
-            audio_tensors, final_params = dialogue_gen.generate(segment, args.gen_count)
+            # generate_batch returns a list of (audio_tensors, final_params) for each segment in the batch
+            batch_results = dialogue_gen.generate_batch(batch, args.gen_count)
             sample_rate = dialogue_gen.model.sr
             
-            # Save generated audio files
-            for gen_idx, audio_tensor in enumerate(audio_tensors):
-                filepath = save_audio_file(audio_tensor, segment, gen_idx, sample_rate, args.output_dir)
-                if filepath:
-                    total_files += 1
-                    
-                    # Log metadata
-                    filename = os.path.basename(filepath)
-                    duration = len(AudioSegment.from_file(filepath)) / 1000.0
-                    
-                    # Get the specific CFG values for this generation index
-                    gen_params = final_params[gen_idx]
-                    
-                    metadata_entry = {
-                        "filename": filename,
-                        "transcription": segment['text'],
-                        "duration": duration,
-                        "exaggeration": gen_params['exaggeration'] if gen_params else None,
-                        "cfg_weight": gen_params['cfg_weight'] if gen_params else None,
-                        "temperature": gen_params['temperature'] if gen_params else None
-                    }
-                    
-                    metadata_path = os.path.join(args.output_dir, "generation_metadata.json")
-                    metadata = []
-                    if os.path.exists(metadata_path):
-                        with open(metadata_path, "r") as f:
-                            try:
-                                metadata = json.load(f)
-                            except json.JSONDecodeError:
-                                metadata = []
-                    
-                    metadata.append(metadata_entry)
-                    with open(metadata_path, "w") as f:
-                        json.dump(metadata, f, indent=4)
-                else:
-                    failed_count += 1
+            for segment, (audio_tensors, final_params) in zip(batch, batch_results):
+                # Save generated audio files
+                for gen_idx, audio_tensor in enumerate(audio_tensors):
+                    filepath = save_audio_file(audio_tensor, segment, gen_idx, sample_rate, args.output_dir)
+                    if filepath:
+                        total_files += 1
+                        
+                        # Log metadata
+                        filename = os.path.basename(filepath)
+                        duration = len(AudioSegment.from_file(filepath)) / 1000.0
+                        
+                        # Get the specific CFG values for this generation index
+                        gen_params = final_params[gen_idx] if gen_idx < len(final_params) else None
+                        
+                        metadata_entry = {
+                            "filename": filename,
+                            "transcription": segment['text'],
+                            "duration": duration,
+                            "exaggeration": gen_params['exaggeration'] if gen_params else None,
+                            "cfg_weight": gen_params['cfg_weight'] if gen_params else None,
+                            "temperature": gen_params['temperature'] if gen_params else None
+                        }
+                        
+                        metadata_path = os.path.join(args.output_dir, "generation_metadata.json")
+                        metadata = []
+                        if os.path.exists(metadata_path):
+                            with open(metadata_path, "r") as f:
+                                try:
+                                    metadata = json.load(f)
+                                except json.JSONDecodeError:
+                                    metadata = []
+                        
+                        metadata.append(metadata_entry)
+                        with open(metadata_path, "w") as f:
+                            json.dump(metadata, f, indent=4)
+                    else:
+                        failed_count += 1
         
         except Exception as e:
-            logger.error(f"Failed to process dialogue segment {segment['sequence']}: {e}")
-            failed_count += 1
+            logger.error(f"Failed to process dialogue batch starting at index {i}: {e}")
+            failed_count += len(batch)
             continue
     
     logger.info(f"Dialogue pass complete. Generated {total_files} files, {failed_count} failed.")

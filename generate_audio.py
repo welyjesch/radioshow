@@ -25,7 +25,7 @@ from typing import Dict, List, Tuple, Optional
 from chatterbox.tts_turbo import ChatterboxTurboTTS
 import scipy.io.wavfile as wavfile
 from pydub import AudioSegment
-from cloud_cfg_provider import get_cfg_settings_from_cloud
+from cloud_cfg_provider import get_cfg_settings_batch_from_cloud
 
 DEFAULT_VOICE_KEY = "default_voice"
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated_audio")
