@@ -13,6 +13,7 @@ import re
 import argparse
 import logging
 import torch
+import numpy as np
 from typing import List, Dict
 from tangoflux import TangoFluxInference
 import scipy.io.wavfile as wavfile
@@ -44,6 +45,15 @@ def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
         # Ensure audio_np is a numpy array and not a torch.Tensor
         if torch.is_tensor(audio_np):
             audio_np = audio_np.detach().cpu().numpy()
+            
+        # Normalize and convert to int16 to avoid 'H' format errors
+        if audio_np.dtype.kind == 'f':  # Floating point
+            # Normalize to [-1, 1]
+            max_val = np.abs(audio_np).max()
+            if max_val > 0:
+                audio_np = audio_np / max_val
+            # Scale to int16 range
+            audio_np = (audio_np * 32767).astype(np.int16)
             
         wavfile.write(filepath, sample_rate, audio_np)
         return filepath
