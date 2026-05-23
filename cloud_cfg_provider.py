@@ -1,13 +1,16 @@
 import requests
 import json
 import logging
+from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
-def get_cfg_settings_from_cloud(text_line: str, api_key: str) -> dict:
+def get_cfg_settings_batch_from_cloud(text_lines: List[str], api_key: str) -> Dict[str, dict]:
     """
     Queries the gemma4:31b-cloud model via Ollama API to generate CFG settings 
-    based on the text line and its emotional cues.
+    for a batch of text lines.
+    
+    Returns a dictionary where keys are the original text lines and values are the CFG settings.
     """
     url = "https://ollama.com/api/generate" # Note: Replace with actual cloud endpoint if different
     
@@ -27,9 +30,12 @@ def get_cfg_settings_from_cloud(text_line: str, api_key: str) -> dict:
         "worried": {"exaggeration": 0.3, "cfg_weight": 0.7, "temperature": 0.6},
     }
 
+    # Format the lines for the prompt
+    lines_formatted = "\n".join([f"- {line}" for line in text_lines])
+
     prompt = (
-        f"Analyze the following line of text, including any cues in parentheses, and determine the appropriate "
-        f"audio generation CFG settings (exaggeration, cfg_weight, temperature).\n\n"
+        f"Analyze the following lines of text, including any cues in parentheses, and determine the appropriate "
+        f"audio generation CFG settings (exaggeration, cfg_weight, temperature) for EACH line.\n\n"
         f"CONSTRAINTS:\n"
         f"- set cfg_weight at max of 0.7\n"
         f"- set exaggeration at min of 0.6\n"
@@ -37,8 +43,8 @@ def get_cfg_settings_from_cloud(text_line: str, api_key: str) -> dict:
         f"CRITICAL: Pay special attention to directorial cues enclosed in parentheses. For example, if the text contains '(angry)', "
         f"you MUST use the reference emotion preset parameters as the primary basis for the settings.\n\n"
         f"Reference Presets:\n{json.dumps(emotion_presets, indent=2)}\n\n"
-        f"Text Line: \"{text_line}\"\n\n"
-        f"Respond ONLY with a JSON object containing the keys 'exaggeration', 'cfg_weight', and 'temperature'. "
+        f"Lines to analyze:\n{lines_formatted}\n\n"
+        f"Respond ONLY with a JSON object where the keys are the exact text of the lines and the values are objects containing 'exaggeration', 'cfg_weight', and 'temperature'. "
         f"Do not include any conversational text or markdown formatting."
     )
 
@@ -55,15 +61,14 @@ def get_cfg_settings_from_cloud(text_line: str, api_key: str) -> dict:
     }
 
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
         response.raise_for_status()
         result = response.json()
         
-        # Ollama usually returns the text in the 'response' field
-        settings = json.loads(result.get("response", "{}"))
-        logger.info(f"Cloud CFG settings for line [{text_line}]: {settings}")
-        return settings
+        settings_map = json.loads(result.get("response", "{}"))
+        logger.info(f"Cloud CFG batch settings retrieved for {len(text_lines)} lines.")
+        return settings_map
     except Exception as e:
-        logger.error(f"Error querying cloud model for CFG settings: {e}")
-        # Return a neutral default if the API call fails
-        return emotion_presets["neutral"]
+        logger.error(f"Error querying cloud model for batch CFG settings: {e}")
+        # Return neutral defaults for all lines in the batch if the API call fails
+        return {line: emotion_presets["neutral"] for line in text_lines}

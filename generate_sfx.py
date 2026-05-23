@@ -1,10 +1,7 @@
 # /// script
 # requires-python = "==3.12.*"
 # dependencies = [
-#     "diffusers==0.27.2",
-#     "transformers==4.38.2",
-#     "huggingface-hub==0.22.2",
-#     "accelerate==0.28.0",
+#     "tangoflux",
 #     "torch",
 #     "scipy==1.13.0",
 # ]
@@ -17,7 +14,7 @@ import argparse
 import logging
 import torch
 from typing import List, Dict
-from diffusers import AudioLDM2Pipeline, DPMSolverMultistepScheduler
+from tangoflux import TangoFluxInference
 import scipy.io.wavfile as wavfile
 
 # Setup logging
@@ -52,24 +49,21 @@ def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
 
 class SFXGenerator:
     def __init__(self):
-        self.pipe = None
+        self.model = None
     
     def initialize(self):
-        """Load AudioLDM2 model once."""
-        if self.pipe is None:
-            logger.info("Loading AudioLDM2 model...")
-            model_id = "cvssp/audioldm2"
-            self.pipe = AudioLDM2Pipeline.from_pretrained(model_id, torch_dtype=torch.float16)
-            self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(self.pipe.scheduler.config)
-            self.pipe.enable_model_cpu_offload()
-            logger.info("AudioLDM2 model loaded.")
+        """Load TangoFlux model once."""
+        if self.model is None:
+            logger.info("Loading TangoFlux model...")
+            self.model = TangoFluxInference(name='declare-lab/TangoFlux')
+            logger.info("TangoFlux model loaded.")
     
     def unload(self):
         """Unload model from memory."""
-        if self.pipe is not None:
-            logger.info("Unloading AudioLDM2 model...")
-            del self.pipe
-            self.pipe = None
+        if self.model is not None:
+            logger.info("Unloading TangoFlux model...")
+            del self.model
+            self.model = None
         torch.cuda.empty_cache()
     
     def generate(self, segment: Dict, gen_count: int) -> List[torch.Tensor]:
@@ -77,26 +71,22 @@ class SFXGenerator:
         self.initialize()
         
         sfx_description = segment['description']
-        negative_prompt = "Low quality, average quality, muffled, noisy"
         
         logger.info(f"Generating {gen_count} SFX versions: {sfx_description[:40]}...")
         
         audio_tensors = []
         for gen_idx in range(gen_count):
             try:
-                seed = 42 + gen_idx
-                generator = torch.Generator("cuda").manual_seed(seed)
-                
-                audio = self.pipe(
-                    prompt=sfx_description,
-                    negative_prompt=negative_prompt,
-                    num_inference_steps=10,
-                    audio_length_in_s=10.0,
-                    generator=generator
+                # TangoFlux doesn't explicitly take a torch.Generator in the provided snippet, 
+                # but we can vary the prompt slightly or rely on internal randomness if needed.
+                # For now, we follow the provided example.
+                audio = self.model.generate(
+                    sfx_description, 
+                    steps=50, 
+                    duration=10
                 )
                 
-                audio_np = audio.audios[0]
-                audio_tensors.append(audio_np)
+                audio_tensors.append(audio)
                 logger.info(f"  Generated SFX version {gen_idx + 1}/{gen_count}")
             except Exception as e:
                 logger.error(f"Failed to generate SFX version {gen_idx + 1}: {e}")
