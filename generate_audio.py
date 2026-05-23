@@ -9,7 +9,7 @@
 #     "s3tokenizer",
 #     "resemble-perth @ git+https://github.com/resemble-ai/Perth.git@master",
 #     "chatterbox-tts @ git+https://github.com/resemble-ai/chatterbox.git",
-#     "spacy",
+#     "nltk",
 # ]
 # ///
 
@@ -21,6 +21,7 @@ import argparse
 import logging
 import torch
 import torchaudio as ta
+import nltk
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from chatterbox.tts_turbo import ChatterboxTurboTTS
@@ -81,9 +82,9 @@ def truncate_text(text, max_length=16):
     """Truncate text and sanitize for filename."""
     return sanitize_filename(text, max_length)
 
-def split_sentences(text):
-    """Split text into lines."""
-    return text.splitlines()
+def tokenize_sentences(text):
+    """Tokenize text into sentences using NLTK."""
+    return nltk.sent_tokenize(text)
 
 # ==================== SCRIPT PARSER ====================
 
@@ -109,22 +110,21 @@ def parse_script(script_path: str) -> List[Dict]:
         if sfx_match:
             # Process accumulated dialogue for previous speaker
             if current_block_text_lines and current_speaker_name:
-                # Use the lines as they are, without joining and re-splitting by punctuation
-                for line_text in current_block_text_lines:
-                    if line_text:
-                        seq_counter += 1
-                        # Remove everything between the first '[' and the last ']' for the speaker tag
-                        clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
-                        clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
-                        
-                        segments.append({
-                            'type': 'dialogue',
-                            'sequence': seq_counter,
-                            'speaker': current_speaker_name,
-                            'text': clean_sentence,
-                            'original_text': line_text,
-                            'explicit_emotion': None
-                        })
+                    full_block_text = " ".join(current_block_text_lines)
+                    sentences = tokenize_sentences(full_block_text)
+                    for sentence in sentences:
+                        if sentence:
+                            seq_counter += 1
+                            # Remove everything between the first '[' and the last ']' for the speaker tag
+                            clean_sentence = re.sub(r'\[.*?\]', '', sentence).strip()
+                            clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
+                            
+                            segments.append({
+                                'type': 'dialogue',
+                                'sequence': seq_counter,
+                                'speaker': current_speaker_name,
+                                'text': clean_sentence,
+                                'original_text': sentence,
                 current_block_text_lines = []
                 current_speaker_name = None
             
@@ -186,12 +186,13 @@ def parse_script(script_path: str) -> List[Dict]:
     
     # Process remaining accumulated text
     if current_block_text_lines and current_speaker_name:
-        # Use the lines as they are, without joining and re-splitting by punctuation
-        for line_text in current_block_text_lines:
-            if line_text:
+        full_block_text = " ".join(current_block_text_lines)
+        sentences = tokenize_sentences(full_block_text)
+        for sentence in sentences:
+            if sentence:
                 seq_counter += 1
                 # Remove everything between the first '[' and the last ']' for the speaker tag
-                clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
+                clean_sentence = re.sub(r'\[.*?\]', '', sentence).strip()
                 clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
                 
                 segments.append({
@@ -199,7 +200,7 @@ def parse_script(script_path: str) -> List[Dict]:
                     'sequence': seq_counter,
                     'speaker': current_speaker_name,
                     'text': clean_sentence,
-                    'original_text': line_text
+                    'original_text': sentence
                 })
     
     logger.info(f"Parsed {len(segments)} segments from {script_path}")
@@ -339,6 +340,18 @@ def save_audio_file(audio_tensor: torch.Tensor, segment: Dict, gen_idx: int,
         
         wavfile.write(filepath, sample_rate, audio_np)
         logger.info(f"Saved: {filename}")
+        
+        # Log to script map
+        log_to_script_map({
+            'id': f"{seq_padded}_{'dia' if segment['type'] == 'dialogue' else 'sfx'}_{gen_padded}_{segment.get('speaker', 'N/A').replace(' ', '_')}",
+            'filename': filename,
+            'text': segment.get('text', segment.get('sfx_description', '')),
+            'speaker': segment.get('speaker', 'N/A'),
+            'sequence': segment['sequence'],
+            'gen_idx': gen_idx + 1,
+            'params': None # Params are handled in the main loop for dialogue
+        }, os.path.join(output_dir, "script.json"))
+        
         return filepath
     
     except Exception as e:
@@ -398,6 +411,18 @@ def main():
             # Save generated audio files
             for gen_idx, audio_tensor in enumerate(audio_tensors):
                 filepath = save_audio_file(audio_tensor, segment, gen_idx, sample_rate, args.output_dir)
+                
+                # Update the log entry with actual params
+                if filepath:
+                    seq_padded = str(segment['sequence']).zfill(4)
+                    gen_padded = str(gen_idx + 1).zfill(2)
+                    speaker_name = segment['speaker'].replace(' ', '_')
+                    asset_id = f"{seq_padded}_dia_{gen_padded}_{speaker_name}"
+                    
+                    log_to_script_map({
+                        'id': asset_id,
+                        'params': final_params[gen_idx]
+                    }, os.path.join(args.output_dir, "script.json"))
                 if filepath:
                     total_files += 1
                     

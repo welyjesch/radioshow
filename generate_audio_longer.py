@@ -358,6 +358,18 @@ def save_audio_file(audio_tensor: torch.Tensor, segment: Dict, gen_idx: int,
         
         wavfile.write(filepath, sample_rate, audio_np)
         logger.info(f"Saved: {filename}")
+        
+        # Log to script map
+        log_to_script_map({
+            'id': f"{seq_padded}_{'dia' if segment['type'] == 'dialogue' else 'sfx'}_{gen_padded}_{segment.get('speaker', 'N/A').replace(' ', '_')}",
+            'filename': filename,
+            'text': segment.get('text', segment.get('sfx_description', '')),
+            'speaker': segment.get('speaker', 'N/A'),
+            'sequence': segment['sequence'],
+            'gen_idx': gen_idx + 1,
+            'params': None # Params are handled in the main loop for dialogue
+        }, os.path.join(output_dir, "script.json"))
+        
         return filepath
     
     except Exception as e:
@@ -423,6 +435,17 @@ def main():
                 for gen_idx, audio_tensor in enumerate(audio_tensors):
                     filepath = save_audio_file(audio_tensor, segment, gen_idx, sample_rate, args.output_dir)
                     if filepath:
+                        # Update the log entry with actual params
+                        seq_padded = str(segment['sequence']).zfill(4)
+                        gen_padded = str(gen_idx + 1).zfill(2)
+                        speaker_name = segment['speaker'].replace(' ', '_')
+                        asset_id = f"{seq_padded}_dia_{gen_padded}_{speaker_name}"
+                        
+                        log_to_script_map({
+                            'id': asset_id,
+                            'params': final_params[gen_idx] if gen_idx < len(final_params) else None
+                        }, os.path.join(args.output_dir, "script.json"))
+
                         total_files += 1
                         
                         # Log metadata

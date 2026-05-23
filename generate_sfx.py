@@ -16,6 +16,7 @@ import numpy as np
 from typing import List, Dict
 from tangoflux import TangoFluxInference
 import torchaudio
+from script_logger import log_to_script_map
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -33,12 +34,16 @@ def truncate_text(text, max_length=16):
     return sanitize_filename(text, max_length)
 
 def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
-    """Saves SFX audio using the naming convention: NNNN-NN_SFX_description.wav"""
+    \"\"\"Saves SFX audio using the naming convention: NNNN-NN_SFX_description.wav\"\"\"
     seq_padded = str(segment["sequence"]).zfill(4)
     gen_padded = str(gen_idx + 1).zfill(2)
     sfx_part = truncate_text(segment["description"])
-    filename = f"{seq_padded}-{gen_padded}_SFX_{sfx_part}.wav"
+    filename = f\"{seq_padded}-{gen_padded}_SFX_{sfx_part}.wav\"
     filepath = os.path.join(output_dir, filename)
+    
+    # Create unique ID: <seq_no>_<sfx/dia>_<gen_no>_<speaker>
+    # For SFX, speaker is usually 'SFX' or the description
+    unique_id = f\"{segment['sequence']}_sfx_{gen_idx + 1}_SFX\"
     
     try:
         # Ensure audio_np is a numpy array and not a torch.Tensor
@@ -58,8 +63,17 @@ def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
             audio_np = audio_np.unsqueeze(0)
         
         torchaudio.save(filepath, audio_np, sample_rate)
-            
-        return filepath
+        
+        # Log to script.json
+        log_to_script_map({
+            "id": unique_id,
+            "filename": filename,
+            "type": "sfx",
+            "sequence": segment["sequence"],
+            "gen_idx": gen_idx + 1,
+            "description": segment["description"],
+            "text": segment.get("original_text", segment["description"])
+        }, map_path=os.path.join(output_dir, "script.json"))
             
         return filepath
     except Exception as e:
