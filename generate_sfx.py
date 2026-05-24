@@ -1,8 +1,8 @@
 # /// script
 # requires-python = "==3.12.*"
 # dependencies = [
-#     "tango",
 #     "torch",
+#     "tango",
 # ]
 # ///
 
@@ -14,8 +14,8 @@ import logging
 import torch
 import numpy as np
 from typing import List, Dict
-from tango import Tango
 import torchaudio
+from tango import Tango
 # Removed script_logger import
 
 # Setup logging
@@ -46,17 +46,11 @@ def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
     unique_id = f\"{segment['sequence']}_sfx_{gen_idx + 1}_SFX\"
     
     try:
-        # Ensure audio_np is a numpy array and not a torch.Tensor
-        if torch.is_tensor(audio_np):
-            audio_np = audio_np.detach().cpu().numpy()
-            
-        # 1. Ensure mono and flat
-        if torch.is_tensor(audio_np):
-            audio_np = audio_np.detach().cpu()
-        
-        # Convert to torch tensor if it's numpy for torchaudio
+        # Ensure audio_np is a torch.Tensor for torchaudio.save
         if isinstance(audio_np, np.ndarray):
             audio_np = torch.from_numpy(audio_np)
+        elif torch.is_tensor(audio_np):
+            audio_np = audio_np.detach().cpu()
 
         # Ensure it's 2D [channels, time]
         if audio_np.ndim == 1:
@@ -102,9 +96,13 @@ class SFXGenerator:
     def initialize(self):
         """Load Tango model once."""
         if self.model is None:
-            logger.info("Loading Tango model...")
-            self.model = Tango('declare-lab/tango2-full')
-            logger.info("Tango model loaded.")
+            logger.info("Loading Tango 2 model (declare-lab/tango2-full)...")
+            try:
+                self.model = Tango('declare-lab/tango2-full')
+                logger.info("Tango 2 model loaded successfully.")
+            except Exception as e:
+                logger.error(f"Failed to load Tango 2 model: {e}")
+                self.model = None
     
     def unload(self):
         """Unload model from memory."""
@@ -116,7 +114,8 @@ class SFXGenerator:
     
     def generate(self, segment: Dict, gen_count: int) -> List[torch.Tensor]:
         """Generate N audio versions for an SFX segment."""
-        self.initialize()
+        if self.model is None:
+            self.initialize()
         
         sfx_description = segment['description']
         

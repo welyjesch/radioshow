@@ -26,7 +26,6 @@ import nltk
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from chatterbox.tts import ChatterboxTTS
-import scipy.io.wavfile as wavfile
 from pydub import AudioSegment
 from cloud_cfg_provider import get_cfg_settings_batch_from_cloud
 
@@ -67,6 +66,33 @@ class VoiceConfig:
 
     def get_path(self, speaker_name: str) -> Optional[str]:
         return self.paths.get(speaker_name.upper())
+
+def log_to_script_map(entry, map_path):
+    """Helper to log generation metadata to a JSON map."""
+    try:
+        data = []
+        if os.path.exists(map_path):
+            with open(map_path, "r") as f:
+                try:
+                    data = json.load(f)
+                except json.JSONDecodeError:
+                    data = []
+        
+        # Update existing entry or add new one
+        updated = False
+        for item in data:
+            if item.get('id') == entry.get('id'):
+                item.update(entry)
+                updated = True
+                break
+        
+        if not updated:
+            data.append(entry)
+            
+        with open(map_path, "w") as f:
+            json.dump(data, f, indent=4)
+    except Exception as e:
+        logger.error(f"Error updating script map: {e}")
 
 # Initialize voice config
 voice_config = VoiceConfig()
@@ -115,7 +141,7 @@ def parse_script(script_path: str) -> List[Dict]:
         if sfx_match:
             # Process accumulated dialogue for previous speaker
             if current_block_text_lines and current_speaker_name:
-                # Use SpaCy to split the accumulated text into individual lines
+                # Split the accumulated text into individual lines
                 full_block_text = "\n".join(current_block_text_lines)
                 split_lines = split_sentences(full_block_text)
                 
@@ -153,7 +179,7 @@ def parse_script(script_path: str) -> List[Dict]:
         if speaker_match:
             # Process accumulated text for previous speaker
             if current_block_text_lines and current_speaker_name:
-                # Use SpaCy to split the accumulated text into individual lines
+                # Split the accumulated text into individual lines
                 full_block_text = "\n".join(current_block_text_lines)
                 split_lines = split_sentences(full_block_text)
                 
@@ -184,10 +210,6 @@ def parse_script(script_path: str) -> List[Dict]:
             if text_for_tts:
                 current_block_text_lines.append(text_for_tts)
             
-            # Store text for later use
-            if current_speaker_name and remaining_text and not current_block_text_lines:
-                current_block_text_lines = [text_for_tts]
-            
             continue
         
         # Regular text line
@@ -196,7 +218,7 @@ def parse_script(script_path: str) -> List[Dict]:
     
     # Process remaining accumulated text
     if current_block_text_lines and current_speaker_name:
-        # Use SpaCy to split the accumulated text into individual lines
+        # Split the accumulated text into individual lines
         full_block_text = "\n".join(current_block_text_lines)
         split_lines = split_sentences(full_block_text)
         
@@ -335,21 +357,11 @@ def save_audio_file(audio_tensor: torch.Tensor, segment: Dict, gen_idx: int,
         
         filepath = os.path.join(output_dir, filename)
         
-        # Convert tensor to numpy and save
-        audio_np = audio_tensor.cpu().numpy()
+        # Ensure tensor is 2D [channels, time]
+        if audio_tensor.ndim == 1:
+            audio_tensor = audio_tensor.unsqueeze(0)
         
-        # Handle multi-channel
-        if audio_np.ndim == 1:
-            audio_np = audio_np.reshape(1, -1)
-        
-        # Transpose to (samples, channels) for scipy
-        if audio_np.shape[0] < audio_np.shape[1]:
-            audio_np = audio_np.T
-        
-        # Normalize to int16
-        audio_np = (audio_np * 32767).astype('int16')
-        
-        wavfile.write(filepath, sample_rate, audio_np)
+        ta.write(filepath, audio_tensor.cpu(), sample_rate)
         logger.info(f"Saved: {filename}")
         
         # Log to script map
