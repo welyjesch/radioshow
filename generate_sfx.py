@@ -1,8 +1,10 @@
 # /// script
 # requires-python = "==3.12.*"
 # dependencies = [
-#     "torch",
-#     "stable-audio-3 @ git+https://github.com/Stability-AI/stable-audio-3.git",
+#     "torch==2.7.1",
+#     "torchaudio==2.7.1",
+#     "numpy>=2.2.6",
+#     "stable-audio-3",
 #     "beautifulsoup4",
 # ]
 # ///
