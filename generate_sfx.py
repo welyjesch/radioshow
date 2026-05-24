@@ -17,7 +17,7 @@ import logging
 import torch
 import numpy as np
 from typing import List, Dict
-import torchaudio
+import torchaudio as ta
 from stable_audio_3 import StableAudioModel
 # Removed script_logger import
 
