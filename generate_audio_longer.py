@@ -3,7 +3,7 @@
 # dependencies = [
 #     "torch==2.6.0",
 #     "torchaudio==2.6.0",
-#     "transformers==5.2.0",
+#     "transformers==4.38.2",
 #     "numpy>=1.24.0,<2.0.0",
 #     "librosa==0.11.0",
 #     "s3tokenizer",
@@ -16,6 +16,7 @@
 
 import os
 import sys
+import torch
 import re
 import json
 import logging

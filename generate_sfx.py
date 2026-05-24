@@ -39,12 +39,12 @@ def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
     seq_padded = str(segment["sequence"]).zfill(4)
     gen_padded = str(gen_idx + 1).zfill(2)
     sfx_part = truncate_text(segment["description"])
-    filename = f\"{seq_padded}-{gen_padded}_SFX_{sfx_part}.wav\"
+    filename = f"{seq_padded}-{gen_padded}_SFX_{sfx_part}.wav"
     filepath = os.path.join(output_dir, filename)
     
     # Create unique ID: <seq_no>_<sfx/dia>_<gen_no>_<speaker>
     # For SFX, speaker is usually 'SFX' or the description
-    unique_id = f\"{segment['sequence']}_sfx_{gen_idx + 1}_SFX\"
+    unique_id = f"{segment['sequence']}_sfx_{gen_idx + 1}_SFX"
     
     try:
         # Ensure audio_np is a torch.Tensor for torchaudio.save
@@ -62,23 +62,42 @@ def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
         # Log to script.json
         try:
             map_path = os.path.join(output_dir, "script.json")
-            data = {}
+            data = []
             if os.path.exists(map_path):
                 with open(map_path, "r", encoding="utf-8") as f:
                     try:
                         data = json.load(f)
+                        if isinstance(data, dict):
+                            # Convert legacy dict format to list
+                            data = [{"id": k, **v} for k, v in data.items()]
                     except json.JSONDecodeError:
                         pass
             
-            data[unique_id] = {
-                "id": unique_id,
-                "filename": filename,
-                "type": "sfx",
-                "sequence": segment["sequence"],
-                "gen_idx": gen_idx + 1,
-                "description": segment["description"],
-                "text": segment.get("original_text", segment["description"])
-            }
+            # Update existing entry or add new one
+            updated = False
+            for item in data:
+                if item.get('id') == unique_id:
+                    item.update({
+                        "filename": filename,
+                        "type": "sfx",
+                        "sequence": segment["sequence"],
+                        "gen_idx": gen_idx + 1,
+                        "description": segment["description"],
+                        "text": segment.get("original_text", segment["description"])
+                    })
+                    updated = True
+                    break
+            
+            if not updated:
+                data.append({
+                    "id": unique_id,
+                    "filename": filename,
+                    "type": "sfx",
+                    "sequence": segment["sequence"],
+                    "gen_idx": gen_idx + 1,
+                    "description": segment["description"],
+                    "text": segment.get("original_text", segment["description"])
+                })
             
             with open(map_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
