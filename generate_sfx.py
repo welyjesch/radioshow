@@ -59,7 +59,7 @@ def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
         if audio_np.ndim == 1:
             audio_np = audio_np.unsqueeze(0)
         
-        torchaudio.save(filepath, audio_np, sample_rate)
+        ta.save(filepath, audio_np, sample_rate)
         
         # Log to script.json
         try:
