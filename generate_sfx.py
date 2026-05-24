@@ -3,6 +3,7 @@
 # dependencies = [
 #     "torch",
 #     "tango",
+#     "beautifulsoup4",
 # ]
 # ///
 
@@ -182,7 +183,7 @@ def main():
                     failed_count += 1
         except Exception as e:
             logger.error(f"Failed to process SFX task {task['sequence']}: {e}")
-            failed_count += len(task["gen_count"]) if isinstance(task["gen_count"], int) else 1
+            failed_count += task["gen_count"] if isinstance(task["gen_count"], int) else 1
             continue
 
     sfx_gen.unload()

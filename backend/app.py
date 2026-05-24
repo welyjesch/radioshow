@@ -40,11 +40,11 @@ DEFAULT_OUTPUT_DIR = str(generated_audio_dir)
 # ==================== UTILITY FUNCTIONS ====================
 
 def extract_sequence_num(filename: str) -> int:
-    # Extract ANY number from filename
-    match = re.search(r"(\d+)", filename)
+    # Extract the sequence number from the start of the filename (e.g., "0001_speaker.wav" -> 1)
+    match = re.match(r"^(\d+)", filename)
     if match:
         return int(match.group(1))
-    return 1  # Default to sequence 1 if no number found
+    return 1  # Default to sequence 1 if no number found at the start
 
 def get_audio_files(output_dir: str) -> Dict[int, List[str]]:
     print(f"[DEBUG] Scanning directory: {output_dir}")
@@ -209,5 +209,4 @@ if __name__ == '__main__':
     print(f"[DEBUG] App directory: {app_dir}")
     print(f"[DEBUG] Generated audio directory: {generated_audio_dir}")
     print(f"[DEBUG] Static files path: {app_dir / 'backend' / 'static'}")
-    app.run(debug=True, port=5000)
     app.run(debug=True, port=5000)

@@ -119,6 +119,27 @@ def split_sentences(text):
 
 # ==================== SCRIPT PARSER ====================
 
+def process_dialogue_block(lines, speaker, seq_counter, segments):
+    """Helper to process accumulated dialogue lines into segments."""
+    full_block_text = "\n".join(lines)
+    split_lines = split_sentences(full_block_text)
+    
+    for line_text in split_lines:
+        if line_text:
+            seq_counter += 1
+            clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
+            clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
+            
+            segments.append({
+                'type': 'dialogue',
+                'sequence': seq_counter,
+                'speaker': speaker,
+                'text': clean_sentence,
+                'original_text': line_text,
+                'explicit_emotion': None
+            })
+    return seq_counter
+
 def parse_script(script_path: str) -> List[Dict]:
     """Parse script file with [SPEAKER] and [SFX: description] tags."""
     if not os.path.exists(script_path):
@@ -141,24 +162,7 @@ def parse_script(script_path: str) -> List[Dict]:
         if sfx_match:
             # Process accumulated dialogue for previous speaker
             if current_block_text_lines and current_speaker_name:
-                # Split the accumulated text into individual lines
-                full_block_text = "\n".join(current_block_text_lines)
-                split_lines = split_sentences(full_block_text)
-                
-                for line_text in split_lines:
-                    seq_counter += 1
-                    # Remove everything between the first '[' and the last ']' for the speaker tag
-                    clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
-                    clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
-                    
-                    segments.append({
-                        'type': 'dialogue',
-                        'sequence': seq_counter,
-                        'speaker': current_speaker_name,
-                        'text': clean_sentence,
-                        'original_text': line_text,
-                        'explicit_emotion': None
-                    })
+                seq_counter = process_dialogue_block(current_block_text_lines, current_speaker_name, seq_counter, segments)
                 current_block_text_lines = []
                 current_speaker_name = None
             
@@ -179,25 +183,16 @@ def parse_script(script_path: str) -> List[Dict]:
         if speaker_match:
             # Process accumulated text for previous speaker
             if current_block_text_lines and current_speaker_name:
-                # Split the accumulated text into individual lines
-                full_block_text = "\n".join(current_block_text_lines)
-                split_lines = split_sentences(full_block_text)
-                
-                for line_text in split_lines:
-                    seq_counter += 1
-                    # Remove everything between the first '[' and the last ']' for the speaker tag
-                    clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
-                    clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
-                    
-                    segments.append({
-                        'type': 'dialogue',
-                        'sequence': seq_counter,
-                        'speaker': current_speaker_name,
-                        'text': clean_sentence,
-                        'original_text': line_text,
-                        'explicit_emotion': None
-                    })
+                seq_counter = process_dialogue_block(current_block_text_lines, current_speaker_name, seq_counter, segments)
                 current_block_text_lines = []
+            
+            # Set new speaker
+            current_speaker_name = speaker_match.group(1).upper()
+            remaining_text = speaker_match.group(2).strip()
+            
+            # Remove parenthesized content for TTS
+            text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', remaining_text).strip()
+            text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
             
             # Set new speaker
             current_speaker_name = speaker_match.group(1).upper()
@@ -218,23 +213,7 @@ def parse_script(script_path: str) -> List[Dict]:
     
     # Process remaining accumulated text
     if current_block_text_lines and current_speaker_name:
-        # Split the accumulated text into individual lines
-        full_block_text = "\n".join(current_block_text_lines)
-        split_lines = split_sentences(full_block_text)
-        
-        for line_text in split_lines:
-            seq_counter += 1
-            # Remove everything between the first '[' and the last ']' for the speaker tag
-            clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
-            clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
-            
-            segments.append({
-                'type': 'dialogue',
-                'sequence': seq_counter,
-                'speaker': current_speaker_name,
-                'text': clean_sentence,
-                'original_text': line_text
-            })
+        seq_counter = process_dialogue_block(current_block_text_lines, current_speaker_name, seq_counter, segments)
     
     logger.info(f"Parsed {len(segments)} segments from {script_path}")
     return segments
@@ -361,7 +340,7 @@ def save_audio_file(audio_tensor: torch.Tensor, segment: Dict, gen_idx: int,
         if audio_tensor.ndim == 1:
             audio_tensor = audio_tensor.unsqueeze(0)
         
-        ta.write(filepath, audio_tensor.cpu(), sample_rate)
+        ta.save(filepath, audio_tensor.cpu(), sample_rate)
         logger.info(f"Saved: {filename}")
         
         # Log to script map
