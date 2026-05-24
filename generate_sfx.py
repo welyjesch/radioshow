@@ -2,7 +2,7 @@
 # requires-python = "==3.12.*"
 # dependencies = [
 #     "torch",
-#     "stable-audio-3",
+#     "stable-audio-3 @ git+https://github.com/Stability-AI/stable-audio-3.git",
 #     "beautifulsoup4",
 # ]
 # ///
