@@ -35,7 +35,7 @@ def truncate_text(text, max_length=16):
     return sanitize_filename(text, max_length)
 
 def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
-    \"\"\"Saves SFX audio using the naming convention: NNNN-NN_SFX_description.wav\"\"\"
+    """Saves SFX audio using the naming convention: NNNN-NN_SFX_description.wav"""
     seq_padded = str(segment["sequence"]).zfill(4)
     gen_padded = str(gen_idx + 1).zfill(2)
     sfx_part = truncate_text(segment["description"])
@@ -140,7 +140,7 @@ class SFXGenerator:
         return audio_tensors
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate SFX from sfx_tasks.json using AudioLDM2")
+    parser = argparse.ArgumentParser(description="Generate SFX from sfx_tasks.json using Stable Audio 3")
     parser.add_argument("--tasks-file", type=str, required=True, help="Path to sfx_tasks.json")
     args = parser.parse_args()
 

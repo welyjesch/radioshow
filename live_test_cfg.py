@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from cloud_cfg_provider import get_cfg_settings_from_cloud
+from cloud_cfg_provider import get_cfg_settings_batch_from_cloud
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -23,7 +23,7 @@ def live_test_cfg_generation():
     for text in test_cases:
         print(f"\nTesting text: {text}")
         try:
-            settings = get_cfg_settings_from_cloud(text, api_key)
+            settings = get_cfg_settings_batch_from_cloud([text], api_key)[text]
             print(f"Result: {json.dumps(settings, indent=2)}")
             
             # Validation

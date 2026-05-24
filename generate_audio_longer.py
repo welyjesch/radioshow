@@ -18,6 +18,7 @@ import os
 import sys
 import re
 import json
+import logging
 import nltk
 nltk.download('punkt_tab')
 import argparse
@@ -183,14 +184,6 @@ def parse_script(script_path: str) -> List[Dict]:
             if current_block_text_lines and current_speaker_name:
                 seq_counter = process_dialogue_block(current_block_text_lines, current_speaker_name, seq_counter, segments)
                 current_block_text_lines = []
-            
-            # Set new speaker
-            current_speaker_name = speaker_match.group(1).upper()
-            remaining_text = speaker_match.group(2).strip()
-            
-            # Remove parenthesized content for TTS
-            text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', remaining_text).strip()
-            text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
             
             # Set new speaker
             current_speaker_name = speaker_match.group(1).upper()
