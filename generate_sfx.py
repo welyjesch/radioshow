@@ -112,16 +112,17 @@ def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
         return None
 
 class SFXGenerator:
-    def __init__(self, hf_key=None):
+    def __init__(self):
         self.model = None
-        self.hf_key = hf_key
     
     def initialize(self):
         """Load Stable Audio 3 model once."""
         if self.model is None:
             logger.info("Loading Stable Audio 3 model (small-sfx)...")
             try:
-                self.model = StableAudioModel.from_pretrained("small-sfx", token=self.hf_key)
+                # StableAudioModel.from_pretrained does not accept 'token' argument
+                # Use huggingface_hub login or environment variable HF_TOKEN
+                self.model = StableAudioModel.from_pretrained("small-sfx")
                 logger.info("Stable Audio 3 model loaded successfully.")
             except Exception as e:
                 logger.error(f"Failed to load Stable Audio 3 model: {e}")
@@ -164,7 +165,6 @@ class SFXGenerator:
 def main():
     parser = argparse.ArgumentParser(description="Generate SFX from sfx_tasks.json using Stable Audio 3")
     parser.add_argument("--tasks-file", type=str, required=True, help="Path to sfx_tasks.json")
-    parser.add_argument("--hf-key", type=str, default=None, help="Hugging Face API key for model authentication")
     args = parser.parse_args()
 
     if not os.path.exists(args.tasks_file):
@@ -183,7 +183,7 @@ def main():
 
     os.makedirs(output_dir, exist_ok=True)
     
-    sfx_gen = SFXGenerator(hf_key=args.hf_key)
+    sfx_gen = SFXGenerator()
     total_files = 0
     failed_count = 0
     sample_rate = 16000
