@@ -4,7 +4,7 @@
 #     "torch==2.7.1",
 #     "torchaudio==2.7.1",
 #     "numpy>=2.2.6",
-#     "stable-audio-3",
+#     "stable-audio-3 @ git+https://github.com/Stability-AI/stable-audio-3.git",
 #     "beautifulsoup4",
 # ]
 # ///
