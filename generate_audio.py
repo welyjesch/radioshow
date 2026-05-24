@@ -10,6 +10,7 @@
 #     "resemble-perth @ git+https://github.com/resemble-ai/Perth.git@master",
 #     "chatterbox-tts @ git+https://github.com/resemble-ai/chatterbox.git",
 #     "nltk",
+#     "beautifulsoup4",
 # ]
 # ///
 

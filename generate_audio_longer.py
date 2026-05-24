@@ -9,7 +9,8 @@
 #     "s3tokenizer",
 #     "resemble-perth @ git+https://github.com/resemble-ai/Perth.git@master",
 #     "chatterbox-tts @ git+https://github.com/resemble-ai/chatterbox.git",
-#     "spacy",
+#     "nltk",
+#     "beautifulsoup4",
 # ]
 # ///
 
@@ -21,12 +22,12 @@ import argparse
 import logging
 import torch
 import torchaudio as ta
+import nltk
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from chatterbox.tts import ChatterboxTTS
 import scipy.io.wavfile as wavfile
 from pydub import AudioSegment
-import spacy
 from cloud_cfg_provider import get_cfg_settings_batch_from_cloud
 
 DEFAULT_VOICE_KEY = "default_voice"
@@ -81,22 +82,14 @@ def truncate_text(text, max_length=16):
     """Truncate text and sanitize for filename."""
     return sanitize_filename(text, max_length)
 
-# Initialize SpaCy model for sentence splitting
-try:
-    nlp = spacy.load("en_core_web_sm")
-except Exception as e:
-    logger.error(f"Failed to load spacy model: {e}")
-    nlp = None
-
 def split_sentences(text):
-    """Split text into individual lines using SpaCy."""
-    if nlp:
-        doc = nlp(text)
-        return [sent.text.strip() for sent in doc.sents if sent.text.strip()]
-    else:
-        # Fallback to basic splitlines if spacy fails
-        lines = text.splitlines()
-        return [l.strip() for l in lines if l.strip()]
+    """Split text into individual sentences using NLTK."""
+    try:
+        return nltk.sent_tokenize(text)
+    except Exception as e:
+        logger.error(f"NLTK sent_tokenize failed: {e}")
+        return text.splitlines()
+
 
 # ==================== SCRIPT PARSER ====================
 
