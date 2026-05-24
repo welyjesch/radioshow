@@ -2,7 +2,7 @@
 # requires-python = "==3.12.*"
 # dependencies = [
 #     "torch",
-#     "tango",
+#     "stable-audio-3",
 #     "beautifulsoup4",
 # ]
 # ///
@@ -16,7 +16,7 @@ import torch
 import numpy as np
 from typing import List, Dict
 import torchaudio
-from tango import Tango
+from stable_audio_3 import StableAudioModel
 # Removed script_logger import
 
 # Setup logging
@@ -95,20 +95,20 @@ class SFXGenerator:
         self.model = None
     
     def initialize(self):
-        """Load Tango model once."""
+        """Load Stable Audio 3 model once."""
         if self.model is None:
-            logger.info("Loading Tango 2 model (declare-lab/tango2-full)...")
+            logger.info("Loading Stable Audio 3 model (small-sfx)...")
             try:
-                self.model = Tango('declare-lab/tango2-full')
-                logger.info("Tango 2 model loaded successfully.")
+                self.model = StableAudioModel.from_pretrained("small-sfx")
+                logger.info("Stable Audio 3 model loaded successfully.")
             except Exception as e:
-                logger.error(f"Failed to load Tango 2 model: {e}")
+                logger.error(f"Failed to load Stable Audio 3 model: {e}")
                 self.model = None
     
     def unload(self):
         """Unload model from memory."""
         if self.model is not None:
-            logger.info("Unloading Tango model...")
+            logger.info("Unloading Stable Audio model...")
             del self.model
             self.model = None
         torch.cuda.empty_cache()
@@ -125,12 +125,10 @@ class SFXGenerator:
         audio_tensors = []
         for gen_idx in range(gen_count):
             try:
-                # TangoFlux doesn't explicitly take a torch.Generator in the provided snippet, 
-                # but we can vary the prompt slightly or rely on internal randomness if needed.
-                # For now, we follow the provided example.
+                # Generate audio using Stable Audio 3
                 audio = self.model.generate(
-                    sfx_description, 
-                    step=200
+                    prompt=sfx_description, 
+                    duration=7,
                 )
                 
                 audio_tensors.append(audio)
