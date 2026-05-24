@@ -16,7 +16,7 @@ import numpy as np
 from typing import List, Dict
 from tango import Tango
 import torchaudio
-from script_logger import log_to_script_map
+# Removed script_logger import
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -65,15 +65,30 @@ def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
         torchaudio.save(filepath, audio_np, sample_rate)
         
         # Log to script.json
-        log_to_script_map({
-            "id": unique_id,
-            "filename": filename,
-            "type": "sfx",
-            "sequence": segment["sequence"],
-            "gen_idx": gen_idx + 1,
-            "description": segment["description"],
-            "text": segment.get("original_text", segment["description"])
-        }, map_path=os.path.join(output_dir, "script.json"))
+        try:
+            map_path = os.path.join(output_dir, "script.json")
+            data = {}
+            if os.path.exists(map_path):
+                with open(map_path, "r", encoding="utf-8") as f:
+                    try:
+                        data = json.load(f)
+                    except json.JSONDecodeError:
+                        pass
+            
+            data[unique_id] = {
+                "id": unique_id,
+                "filename": filename,
+                "type": "sfx",
+                "sequence": segment["sequence"],
+                "gen_idx": gen_idx + 1,
+                "description": segment["description"],
+                "text": segment.get("original_text", segment["description"])
+            }
+            
+            with open(map_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+        except Exception as log_e:
+            logger.error(f"Failed to update script.json: {log_e}")
             
         return filepath
     except Exception as e:
