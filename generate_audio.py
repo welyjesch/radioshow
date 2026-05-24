@@ -18,11 +18,9 @@ import os
 import sys
 import re
 import json
-import argparse
-import logging
-import torch
-import torchaudio as ta
 import nltk
+nltk.download('punkt_tab')
+import argparse
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from chatterbox.tts_turbo import ChatterboxTurboTTS
