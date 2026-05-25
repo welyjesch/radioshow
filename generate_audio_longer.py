@@ -122,8 +122,15 @@ def split_sentences(text):
 
 def process_dialogue_block(lines, speaker, seq_counter, segments):
     """Helper to process accumulated dialogue lines into segments."""
-    full_block_text = "\n".join(lines)
-    split_lines = split_sentences(full_block_text)
+    # Tokenize each line individually to preserve the script's natural
+    # line structure. Joining all lines first causes NLTK's Punkt tokenizer
+    # to treat newlines as whitespace, merging lines and re-splitting at
+    # statistical boundaries which produces incoherent phrase fragments.
+    split_lines = []
+    for individual_line in lines:
+        stripped = individual_line.strip()
+        if stripped:
+            split_lines.extend(split_sentences(stripped))
     
     for line_text in split_lines:
         if line_text:
