@@ -36,7 +36,7 @@ def truncate_text(text, max_length=16):
     """Truncate text and sanitize for filename."""
     return sanitize_filename(text, max_length)
 
-def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
+def save_audio_file(audio_tensor, segment, gen_idx, sample_rate, output_dir):
     """Saves SFX audio using the naming convention: NNNN-NN_SFX_description.wav"""
     seq_padded = str(segment["sequence"]).zfill(4)
     gen_padded = str(gen_idx + 1).zfill(2)
@@ -49,17 +49,25 @@ def save_audio_file(audio_np, segment, gen_idx, sample_rate, output_dir):
     unique_id = f"{segment['sequence']}_sfx_{gen_idx + 1}_SFX"
     
     try:
-        # Ensure audio_np is a torch.Tensor for torchaudio.save
-        if isinstance(audio_np, np.ndarray):
-            audio_np = torch.from_numpy(audio_np)
-        elif torch.is_tensor(audio_np):
-            audio_np = audio_np.detach().cpu()
+        # Ensure audio_tensor is a torch.Tensor for torchaudio.save
+        if isinstance(audio_tensor, np.ndarray):
+            audio_tensor = torch.from_numpy(audio_tensor)
+        if torch.is_tensor(audio_tensor):
+            audio_tensor = audio_tensor.detach().cpu().float()
 
-        # Ensure it's 2D [channels, time]
-        if audio_np.ndim == 1:
-            audio_np = audio_np.unsqueeze(0)
+        # Ensure it's 2D [channels, time] — required by torchaudio.save
+        logger.info(f"Audio tensor shape before reshape: {audio_tensor.shape}, ndim={audio_tensor.ndim}")
+        if audio_tensor.ndim == 3:
+            # [batch, channels, time] -> select first batch item
+            audio_tensor = audio_tensor[0]
+        if audio_tensor.ndim == 1:
+            # [time] -> [1, time]
+            audio_tensor = audio_tensor.unsqueeze(0)
+        if audio_tensor.ndim != 2:
+            raise ValueError(f"Expected 2D tensor [channels, time] after reshape, got {audio_tensor.ndim}D with shape {audio_tensor.shape}")
         
-        ta.save(filepath, audio_np, sample_rate)
+        logger.info(f"Saving {filename}: shape={audio_tensor.shape}, sr={sample_rate}")
+        ta.save(filepath, audio_tensor, sample_rate)
         
         # Log to script.json
         try:
@@ -136,6 +144,12 @@ class SFXGenerator:
             self.model = None
         torch.cuda.empty_cache()
     
+    def get_sample_rate(self):
+        """Return the model's native sample rate."""
+        if self.model is not None:
+            return self.model.model.sample_rate
+        return 44100  # Stable Audio 3 default
+
     def generate(self, segment: Dict, gen_count: int) -> List[torch.Tensor]:
         """Generate N audio versions for an SFX segment."""
         if self.model is None:
@@ -149,13 +163,18 @@ class SFXGenerator:
         for gen_idx in range(gen_count):
             try:
                 # Generate audio using Stable Audio 3
+                # Returns tensor of shape [batch, channels, samples]
                 audio = self.model.generate(
                     prompt=sfx_description, 
                     duration=7,
                 )
                 
-                audio_tensors.append(audio)
-                logger.info(f"  Generated SFX version {gen_idx + 1}/{gen_count}")
+                # Index into batch dimension to get [channels, samples]
+                # This matches the official CLI: audio[i].cpu()
+                audio_2d = audio[0].cpu()
+                
+                audio_tensors.append(audio_2d)
+                logger.info(f"  Generated SFX version {gen_idx + 1}/{gen_count} (shape: {audio_2d.shape})")
             except Exception as e:
                 logger.error(f"Failed to generate SFX version {gen_idx + 1}: {e}")
                 continue
@@ -184,9 +203,11 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
     
     sfx_gen = SFXGenerator()
+    sfx_gen.initialize()  # Load model upfront to get sample_rate
     total_files = 0
     failed_count = 0
-    sample_rate = 16000
+    sample_rate = sfx_gen.get_sample_rate()
+    logger.info(f"Model sample rate: {sample_rate} Hz")
 
     logger.info("=" * 60)
     logger.info(f"Processing {len(tasks)} SFX tasks")
