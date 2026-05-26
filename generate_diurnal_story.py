@@ -309,9 +309,9 @@ class DialogueGenerator:
     def generate_batch(self, segments: List[Dict], gen_count: int) -> List[Tuple[List[torch.Tensor], List[dict]]]:
         self.initialize()
         
-        original_texts = [s['original_text'] for s in segments]
-        # Use preset provider to pick the best voicebank filename
-        preset_map = get_preset_batch_from_cloud(original_texts, self.voice_config.deliveries, self.api_key)
+        # Use sequence IDs to pick the best voicebank filename
+        seq_ids = [str(s['sequence']) for s in segments]
+        preset_map = get_preset_batch_from_cloud(seq_ids, [s['original_text'] for s in segments], self.voice_config.deliveries, self.api_key)
         
         batch_results = []
         generation_log = {}
@@ -323,8 +323,9 @@ class DialogueGenerator:
             # Static CFG settings
             params = {"exaggeration": 0.7, "cfg_weight": 0.3, "temperature": 0.8}
             
-            # Get the AI-selected preset and transformed text from the map
-            preset_data = preset_map.get(original_text, {})
+            # Get the AI-selected preset and transformed text from the map using sequence ID
+            seq_key = str(segment['sequence'])
+            preset_data = preset_map.get(seq_key, {})
             delivery_name = preset_data.get('preset')
             text_for_tts = preset_data.get('transformed_text', text)
             

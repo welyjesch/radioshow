@@ -5,17 +5,17 @@ from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
-def get_preset_batch_from_cloud(text_lines: List[str], voice_presets: List[str], api_key: str) -> Dict[str, str]:
+def get_preset_batch_from_cloud(seq_ids: List[str], text_lines: List[str], voice_presets: List[str], api_key: str) -> Dict[str, Dict]:
     """
     Queries the gemma4:31b-cloud model via Ollama API to select the best voice preset 
     from a provided list for a batch of text lines.
     
-    Returns a dictionary where keys are the original text lines and values are the selected preset names.
+    Returns a dictionary where keys are the sequence IDs and values are objects containing the preset and transformed text.
     """
     url = "https://ollama.com/api/generate"
     
-    # Format the lines for the prompt
-    lines_formatted = "\n".join([f"- {line}" for line in text_lines])
+    # Format the lines with their IDs for the prompt
+    lines_formatted = "\n".join([f"ID {sid}: {line}" for sid, line in zip(seq_ids, text_lines)])
     presets_formatted = ", ".join(voice_presets)
 
     prompt = (
@@ -25,7 +25,7 @@ def get_preset_batch_from_cloud(text_lines: List[str], voice_presets: List[str],
         f"and pause tags (e.g., [pause: 0.5]) to enhance the realism of the TTS generation.\n\n"
         f"AVAILABLE PRESETS:\n{presets_formatted}\n\n"
         f"Lines to analyze:\n{lines_formatted}\n\n"
-        f"Respond ONLY with a JSON object where the keys are the original text of the lines and the values are another object containing:\n"
+        f"Respond ONLY with a JSON object where the keys are the IDs (e.g., \"1\", \"2\") and the values are another object containing:\n"
         f"1. 'preset': The selected preset name (string).\n"
         f"2. 'transformed_text': The line with emotive tags and pauses inserted.\n"
         f"Do not include any conversational text or markdown formatting."
