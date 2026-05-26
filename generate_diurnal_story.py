@@ -321,7 +321,7 @@ class DialogueGenerator:
             original_text = segment['original_text']
             
             # Static CFG settings
-            params = {"exaggeration": 0.7, "cfg_weight": 0.3, "temperature": 0.8}
+            params = {"exaggeration": 1.0, "cfg_weight": 0.2, "temperature": 0.1}
             
             # Get the AI-selected preset and transformed text from the map using sequence ID
             seq_key = str(segment['sequence'])

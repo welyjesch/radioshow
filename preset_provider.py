@@ -22,6 +22,7 @@ def get_preset_batch_from_cloud(seq_ids: List[str], text_lines: List[str], voice
         f"Analyze the following lines of text, including any cues in parentheses, and select the most appropriate "
         f"voice preset from the provided list for EACH line to best capture the emotion and delivery.\n\n"
         f"Additionally, transform each line by inserting appropriate emotive tags from the ALLOWED LIST below. "
+        f"CRITICAL: Paralingual tags must be placed ONLY at the very beginning or the very end of the sentence to avoid disrupting delivery (e.g., \"[fear] winter is coming!\" or \"I am your father! [cough]\"). "
         f"If a pause is needed, insert an ellipsis (...) inline instead of a pause tag.\n\n"
         f"ALLOWED EMOTIVE TAGS:\n"
         f"[advertisement], [angry], [chuckle], [clear throat], [cough], [crying], [dramatic], [fear], [gasp], [groan], [happy], [laugh], [narration], [sarcastic], [shush], [sigh], [sniff], [surprised], [whispering]\n\n"
