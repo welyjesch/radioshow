@@ -21,13 +21,16 @@ def get_preset_batch_from_cloud(seq_ids: List[str], text_lines: List[str], voice
     prompt = (
         f"Analyze the following lines of text, including any cues in parentheses, and select the most appropriate "
         f"voice preset from the provided list for EACH line to best capture the emotion and delivery.\n\n"
-        f"Additionally, transform each line by inserting appropriate emotive tags (e.g., [sigh], [laughs], [chuckles], [whistles], [coughs], or other non-verbal sounds) "
-        f"and pause tags (e.g., [pause: 0.5]) to enhance the realism of the TTS generation.\n\n"
+        f"Additionally, transform each line by inserting appropriate emotive tags from the ALLOWED LIST below. "
+        f"If a pause is needed, insert an ellipsis (...) inline instead of a pause tag.\n\n"
+        f"ALLOWED EMOTIVE TAGS:\n"
+        f"[advertisement], [angry], [chuckle], [clear throat], [cough], [crying], [dramatic], [fear], [gasp], [groan], [happy], [laugh], [narration], [sarcastic], [shush], [sigh], [sniff], [surprised], [whispering]\n\n"
         f"AVAILABLE PRESETS:\n{presets_formatted}\n\n"
         f"Lines to analyze:\n{lines_formatted}\n\n"
         f"Respond ONLY with a JSON object where the keys are the IDs (e.g., \"1\", \"2\") and the values are another object containing:\n"
         f"1. 'preset': The selected preset name (string).\n"
-        f"2. 'transformed_text': The line with emotive tags and pauses inserted.\n"
+        f"2. 'transformed_text': The line with allowed emotive tags and ellipses inserted.\n"
+        f"3. 'p_pause': A float representing the duration of silence (in seconds) to append after the line (e.g., 0.5, 1.0, or 0.0 for no pause).\n"
         f"Do not include any conversational text or markdown formatting."
     )
 

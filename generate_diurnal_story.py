@@ -373,12 +373,22 @@ class DialogueGenerator:
                     logger.info(f"  [Gen {gen_idx + 1}] Text: {text_for_tts} | Delivery: {delivery_name} | Params: exaggeration={modified_exaggeration}, cfg_weight={modified_cfg_weight}, temperature={modified_temperature}")
 
                     full_audio = torch.cat(chunk_audios, dim=-1)
+                    
+                    # Handle post-line pause (p_pause)
+                    p_pause = preset_data.get('p_pause', 0.0)
+                    if p_pause > 0:
+                        sample_rate = self.model.sr
+                        silence_duration_samples = int(p_pause * sample_rate)
+                        silence_tensor = torch.zeros(full_audio.shape[0], silence_duration_samples).to(full_audio.device)
+                        full_audio = torch.cat([full_audio, silence_tensor], dim=-1)
+
                     audio_tensors.append(full_audio)
                     final_params.append({
                         'exaggeration': modified_exaggeration,
                         'cfg_weight': modified_cfg_weight,
                         'temperature': modified_temperature,
-                        'delivery': delivery_name
+                        'delivery': delivery_name,
+                        'p_pause': p_pause
                     })
                 except Exception as e:
                     logger.error(f"Failed to generate version {gen_idx + 1} for text '{text[:20]}...': {e}")
