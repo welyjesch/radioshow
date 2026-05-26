@@ -286,6 +286,7 @@ class DialogueGenerator:
     def __init__(self, api_key: str):
         self.model = None
         self.api_key = api_key
+        self.voice_config = voice_config
     
     def initialize(self):
         if self.model is None:
@@ -317,13 +318,13 @@ class DialogueGenerator:
             
             # Get the AI-selected preset filename from the map
             delivery_name = preset_map.get(original_text)
-            voice_path = voice_config.get_voice_path(delivery_name)
+            voice_path = self.voice_config.get_voice_path(delivery_name)
             
             if not voice_path:
                 # Fallback to the first available file in the voicebank if no delivery specified or found
-                if voice_config.deliveries:
-                    fallback_file = voice_config.deliveries[0]
-                    voice_path = os.path.join(voice_config.voicebank_dir, fallback_file)
+                if self.voice_config.deliveries:
+                    fallback_file = self.voice_config.deliveries[0]
+                    voice_path = os.path.join(self.voice_config.voicebank_dir, fallback_file)
                     logger.warning(f"Delivery '{delivery_name}' not found or not specified. Falling back to: {fallback_file}")
                 else:
                     logger.error("Critical: No voice files found in diurnal_voicebank and no valid delivery specified.")
@@ -403,16 +404,6 @@ def save_audio_file(audio_tensor: torch.Tensor, segment: Dict, gen_idx: int,
         
         ta.save(filepath, audio_tensor.cpu(), sample_rate)
         logger.info(f"Saved: {filename}")
-        
-        log_to_script_map({
-            'id': f"{seq_padded}_{'dia' if segment['type'] == 'dialogue' else 'sfx'}_{gen_padded}_Diurnal",
-            'filename': filename,
-            'text': segment.get('text', segment.get('sfx_description', '')),
-            'speaker': 'Diurnal',
-            'sequence': segment['sequence'],
-            'gen_idx': gen_idx + 1,
-            'params': None 
-        }, os.path.join(output_dir, "script.json"))
         
         return filepath
     
@@ -498,6 +489,7 @@ def main():
                             "temperature": gen_params['temperature'] if gen_params else None,
                             "delivery": gen_params['delivery'] if gen_params else None
                         }
+                        logger.info(f"Metadata generated: {metadata_entry}")
                         
                         metadata_path = os.path.join(args.output_dir, "generation_metadata.json")
                         metadata = []
