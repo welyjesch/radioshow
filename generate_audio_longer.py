@@ -117,6 +117,90 @@ def split_sentences(text):
         logger.error(f"NLTK sent_tokenize failed: {e}")
         return text.splitlines()
 
+# Punctuation characters that are valid emergency split points
+_SPLIT_PUNCTUATION = (',', ';', ':', '—', '–')
+
+def _split_at_punctuation(text, target_words=20, max_words=40):
+    """Split a single oversized chunk (>max_words) at punctuation boundaries.
+    
+    Walks through words and splits at the first punctuation mark found
+    at or after target_words. If no punctuation is found before max_words,
+    splits hard at max_words.
+    """
+    words = text.split()
+    if len(words) <= max_words:
+        return [text]
+    
+    chunks = []
+    current_start = 0
+    
+    while current_start < len(words):
+        remaining = words[current_start:]
+        if len(remaining) <= max_words:
+            chunks.append(' '.join(remaining))
+            break
+        
+        # Look for punctuation between target_words and max_words
+        split_idx = None
+        for i in range(target_words - 1, min(len(remaining), max_words)):
+            word = remaining[i]
+            if any(word.endswith(p) for p in _SPLIT_PUNCTUATION):
+                split_idx = i + 1
+                break
+        
+        # If no punctuation found in range, hard split at max_words
+        if split_idx is None:
+            split_idx = max_words
+        
+        chunks.append(' '.join(remaining[:split_idx]))
+        current_start += split_idx
+    
+    return chunks if chunks else [text]
+
+
+def merge_short_sentences(sentences, min_words=20, max_words=40):
+    """Merge adjacent short sentences until their combined word count exceeds
+    min_words. Then split any resulting chunk that exceeds max_words at the
+    nearest punctuation boundary.
+    
+    Example with min_words=20:
+        A(10 words) + B(12 words) = 22 words > 20 → merged chunk "A B"
+        C(22 words) > 20 → own chunk "C"
+        D(10 words) → own chunk "D" (last, nothing left to merge)
+    """
+    if not sentences:
+        return []
+    
+    # Phase 1: Merge short sentences to meet minimum word count
+    merged = []
+    buffer = []
+    buffer_word_count = 0
+    
+    for sentence in sentences:
+        sentence_word_count = len(sentence.split())
+        buffer.append(sentence)
+        buffer_word_count += sentence_word_count
+        
+        # Flush when accumulated words exceed the minimum threshold
+        if buffer_word_count > min_words:
+            merged.append(' '.join(buffer))
+            buffer = []
+            buffer_word_count = 0
+    
+    # Flush any remaining sentences in the buffer
+    if buffer:
+        merged.append(' '.join(buffer))
+    
+    # Phase 2: Split any chunk exceeding max_words at punctuation
+    final = []
+    for chunk in merged:
+        if len(chunk.split()) > max_words:
+            final.extend(_split_at_punctuation(chunk, min_words, max_words))
+        else:
+            final.append(chunk)
+    
+    return final
+
 
 # ==================== SCRIPT PARSER ====================
 
@@ -126,13 +210,17 @@ def process_dialogue_block(lines, speaker, seq_counter, segments):
     # line structure. Joining all lines first causes NLTK's Punkt tokenizer
     # to treat newlines as whitespace, merging lines and re-splitting at
     # statistical boundaries which produces incoherent phrase fragments.
-    split_lines = []
+    all_sentences = []
     for individual_line in lines:
         stripped = individual_line.strip()
         if stripped:
-            split_lines.extend(split_sentences(stripped))
+            all_sentences.extend(split_sentences(stripped))
     
-    for line_text in split_lines:
+    # Merge short sentences to prevent TTS hallucination on short inputs,
+    # and split oversized chunks at punctuation boundaries.
+    merged_chunks = merge_short_sentences(all_sentences, min_words=20, max_words=40)
+    
+    for line_text in merged_chunks:
         if line_text:
             seq_counter += 1
             clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()

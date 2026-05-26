@@ -16,23 +16,23 @@
 
 import os
 import sys
+import torch
+import torchaudio as ta
 import re
 import json
 import logging
 import nltk
-import torchaudio as ta
 nltk.download('punkt_tab')
 import argparse
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
-from chatterbox.tts_turbo import ChatterboxTurboTTS
+from chatterbox.tts import ChatterboxTTS
 from pydub import AudioSegment
-from cloud_cfg_provider import get_cfg_settings_batch_from_cloud
+from preset_provider import get_preset_batch_from_cloud
 
 DEFAULT_VOICE_KEY = "default_voice"
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated_audio")
 DEFAULT_GENERATION_COUNT = 7
-
 
 # ==================== UTILITIES ====================
 
@@ -45,28 +45,38 @@ def setup_logger():
 
 logger = setup_logger()
 
-class VoiceConfig:
+class DiurnalVoiceConfig:
     def __init__(self):
-        self.paths = {}
-        self.script_dir = os.path.dirname(os.path.abspath(__file__))
-        self.config_file = os.path.join(self.script_dir, "voice_paths.json")
-        self.load_config()
+        self.voicebank_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "diurnal_voicebank")
+        self.deliveries = []
+        self.load_deliveries()
 
-    def load_config(self):
-        logger.info(f"Checking for voice paths config at: {self.config_file}")
-        if os.path.exists(self.config_file):
+    def load_deliveries(self):
+        logger.info(f"Checking for diurnal voicebank at: {self.voicebank_dir}")
+        if os.path.exists(self.voicebank_dir):
             try:
-                with open(self.config_file, "r") as f:
-                    raw_paths = json.load(f)
-                    self.paths = {k.upper(): os.path.join(self.script_dir, v) for k, v in raw_paths.items()}
-                    logger.info(f"Loaded voice paths map:\n{json.dumps(self.paths, indent=2)}")
+                # Get all files in the directory
+                self.deliveries = sorted(os.listdir(self.voicebank_dir))
+                logger.info(f"Loaded {len(self.deliveries)} delivery files from diurnal_voicebank")
             except Exception as e:
-                logger.error(f"Error loading voice_paths.json: {e}")
+                logger.error(f"Error loading diurnal_voicebank: {e}")
         else:
-            logger.warning(f"voice_paths.json not found at {self.config_file}")
+            logger.warning(f"diurnal_voicebank directory not found at {self.voicebank_dir}")
 
-    def get_path(self, speaker_name: str) -> Optional[str]:
-        return self.paths.get(speaker_name.upper())
+    def get_voice_path(self, delivery_name: str) -> Optional[str]:
+        if not delivery_name:
+            return None
+        
+        # If the delivery_name is exactly one of our files, use it
+        if delivery_name in self.deliveries:
+            return os.path.join(self.voicebank_dir, delivery_name)
+        
+        # Otherwise, try to find a match (e.g., "angry" matching "angry.mp3" or "angry.wav")
+        for d in self.deliveries:
+            if d.startswith(delivery_name) and d.split('.')[-1] in ['mp3', 'wav']:
+                return os.path.join(self.voicebank_dir, d)
+        
+        return None
 
 def log_to_script_map(entry, map_path):
     """Helper to log generation metadata to a JSON map."""
@@ -95,8 +105,8 @@ def log_to_script_map(entry, map_path):
     except Exception as e:
         logger.error(f"Error updating script map: {e}")
 
-# Initialize voice config
-voice_config = VoiceConfig()
+# Initialize diurnal voice config
+voice_config = DiurnalVoiceConfig()
 
 def sanitize_filename(text, max_length=16):
     """Convert text to safe filename."""
@@ -109,20 +119,19 @@ def truncate_text(text, max_length=16):
     """Truncate text and sanitize for filename."""
     return sanitize_filename(text, max_length)
 
-def tokenize_sentences(text):
-    """Tokenize text into sentences using NLTK."""
-    return nltk.sent_tokenize(text)
+def split_sentences(text):
+    """Split text into individual sentences using NLTK."""
+    try:
+        return nltk.sent_tokenize(text)
+    except Exception as e:
+        logger.error(f"NLTK sent_tokenize failed: {e}")
+        return text.splitlines()
 
 # Punctuation characters that are valid emergency split points
 _SPLIT_PUNCTUATION = (',', ';', ':', '—', '–')
 
 def _split_at_punctuation(text, target_words=20, max_words=40):
-    """Split a single oversized chunk (>max_words) at punctuation boundaries.
-    
-    Walks through words and splits at the first punctuation mark found
-    at or after target_words. If no punctuation is found before max_words,
-    splits hard at max_words.
-    """
+    """Split a single oversized chunk (>max_words) at punctuation boundaries."""
     words = text.split()
     if len(words) <= max_words:
         return [text]
@@ -136,7 +145,6 @@ def _split_at_punctuation(text, target_words=20, max_words=40):
             chunks.append(' '.join(remaining))
             break
         
-        # Look for punctuation between target_words and max_words
         split_idx = None
         for i in range(target_words - 1, min(len(remaining), max_words)):
             word = remaining[i]
@@ -144,7 +152,6 @@ def _split_at_punctuation(text, target_words=20, max_words=40):
                 split_idx = i + 1
                 break
         
-        # If no punctuation found in range, hard split at max_words
         if split_idx is None:
             split_idx = max_words
         
@@ -153,21 +160,11 @@ def _split_at_punctuation(text, target_words=20, max_words=40):
     
     return chunks if chunks else [text]
 
-
 def merge_short_sentences(sentences, min_words=20, max_words=40):
-    """Merge adjacent short sentences until their combined word count exceeds
-    min_words. Then split any resulting chunk that exceeds max_words at the
-    nearest punctuation boundary.
-    
-    Example with min_words=20:
-        A(10 words) + B(12 words) = 22 words > 20 → merged chunk "A B"
-        C(22 words) > 20 → own chunk "C"
-        D(10 words) → own chunk "D" (last, nothing left to merge)
-    """
+    """Merge adjacent short sentences until their combined word count exceeds min_words."""
     if not sentences:
         return []
     
-    # Phase 1: Merge short sentences to meet minimum word count
     merged = []
     buffer = []
     buffer_word_count = 0
@@ -177,17 +174,14 @@ def merge_short_sentences(sentences, min_words=20, max_words=40):
         buffer.append(sentence)
         buffer_word_count += sentence_word_count
         
-        # Flush when accumulated words exceed the minimum threshold
         if buffer_word_count > min_words:
             merged.append(' '.join(buffer))
             buffer = []
             buffer_word_count = 0
     
-    # Flush any remaining sentences in the buffer
     if buffer:
         merged.append(' '.join(buffer))
     
-    # Phase 2: Split any chunk exceeding max_words at punctuation
     final = []
     for chunk in merged:
         if len(chunk.split()) > max_words:
@@ -197,23 +191,16 @@ def merge_short_sentences(sentences, min_words=20, max_words=40):
     
     return final
 
-
 # ==================== SCRIPT PARSER ====================
 
 def process_dialogue_block(lines, speaker, seq_counter, segments):
     """Helper to process accumulated dialogue lines into segments."""
-    # Tokenize each line individually to preserve the script's natural
-    # line structure. Joining all lines first causes NLTK's Punkt tokenizer
-    # to treat newlines as whitespace, merging lines and re-splitting at
-    # statistical boundaries which produces incoherent phrase fragments.
     all_sentences = []
     for individual_line in lines:
         stripped = individual_line.strip()
         if stripped:
-            all_sentences.extend(tokenize_sentences(stripped))
+            all_sentences.extend(split_sentences(stripped))
     
-    # Merge short sentences to prevent TTS hallucination on short inputs,
-    # and split oversized chunks at punctuation boundaries.
     merged_chunks = merge_short_sentences(all_sentences, min_words=20, max_words=40)
     
     for line_text in merged_chunks:
@@ -249,16 +236,13 @@ def parse_script(script_path: str) -> List[Dict]:
     for line in lines:
         line_stripped = line.strip()
         
-        # Check for SFX tag
         sfx_match = re.match(r'^\[SFX:\s*(.+?)\]\s*(.*)', line_stripped)
         if sfx_match:
-            # Process accumulated dialogue for previous speaker
             if current_block_text_lines and current_speaker_name:
                 seq_counter = process_dialogue_block(current_block_text_lines, current_speaker_name, seq_counter, segments)
                 current_block_text_lines = []
                 current_speaker_name = None
             
-            # Add SFX segment
             sfx_description = sfx_match.group(1).strip()
             if sfx_description:
                 seq_counter += 1
@@ -270,36 +254,26 @@ def parse_script(script_path: str) -> List[Dict]:
                 })
             continue
         
-        # Check for speaker tag
         speaker_match = re.match(r'^\[([A-Za-z0-9_ \-]+)\]\s*(.*)', line_stripped)
         if speaker_match:
-            # Process accumulated text for previous speaker
             if current_block_text_lines and current_speaker_name:
                 seq_counter = process_dialogue_block(current_block_text_lines, current_speaker_name, seq_counter, segments)
                 current_block_text_lines = []
             
-            # Set new speaker
             current_speaker_name = speaker_match.group(1).upper()
             remaining_text = speaker_match.group(2).strip()
             
-            # Remove parenthesized content for TTS
             text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', remaining_text).strip()
             text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
             
             if text_for_tts:
                 current_block_text_lines.append(text_for_tts)
             
-            # Store text for later use
-            if current_speaker_name and remaining_text and not current_block_text_lines:
-                current_block_text_lines = [text_for_tts]
-            
             continue
         
-        # Regular text line
         if line_stripped:
             current_block_text_lines.append(line_stripped)
-    
-    # Process remaining accumulated text
+            
     if current_block_text_lines and current_speaker_name:
         seq_counter = process_dialogue_block(current_block_text_lines, current_speaker_name, seq_counter, segments)
     
@@ -314,100 +288,99 @@ class DialogueGenerator:
         self.api_key = api_key
     
     def initialize(self):
-        """Load models once."""
         if self.model is None:
-            logger.info("Loading ChatterboxTurboTTS model...")
-            self.model = ChatterboxTurboTTS.from_pretrained(device="cuda")
+            logger.info("Loading ChatterboxTTS model...")
+            self.model = ChatterboxTTS.from_pretrained(device="cuda")
     
     def unload(self):
-        """Unload models from memory."""
         if self.model is not None:
-            logger.info("Unloading ChatterboxTurboTTS model...")
+            logger.info("Unloading ChatterboxTTS model...")
             del self.model
             self.model = None
         torch.cuda.empty_cache()
     
-    def generate(self, segment: Dict, gen_count: int) -> List[torch.Tensor]:
-        """Generate N audio versions for a dialogue segment."""
+    def generate_batch(self, segments: List[Dict], gen_count: int) -> List[Tuple[List[torch.Tensor], List[dict]]]:
         self.initialize()
         
-        speaker_name = segment['speaker']
-        text = segment['text']
-        original_text = segment['original_text']
+        original_texts = [s['original_text'] for s in segments]
+        # Use preset provider to pick the best voicebank filename
+        preset_map = get_preset_batch_from_cloud(original_texts, self.api_key)
         
-        # Get voice path
-        speaker_name_upper = speaker_name.upper()
-        voice_path = voice_config.get_path(speaker_name_upper)
-        logger.info(f"Checking voice path for '{speaker_name}': '{voice_path}'")
+        batch_results = []
         
-        if not voice_path or not os.path.exists(voice_path):
-            fallback_path = voice_config.get_path(DEFAULT_VOICE_KEY)
-            logger.warning(f"Voice file '{voice_path}' not found for speaker '{speaker_name}'. Falling back to default: '{fallback_path}'")
-            voice_path = fallback_path
+        for segment in segments:
+            text = segment['text']
+            original_text = segment['original_text']
             
-        if not voice_path or not os.path.exists(voice_path):
-            logger.error(f"Critical: Resolved voice path is invalid or missing: '{voice_path}'. Generation may fail or use model defaults.")
-        
-        # Get CFG settings from cloud model
-        params = get_cfg_settings_batch_from_cloud(original_text, self.api_key)
-        
-        # Strip parentheses-enclosed tags (emotion/delivery markers) from text
-        # These should not be spoken aloud
-        text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', text).strip()
-        text_for_tts = re.sub(r'\s+', ' ', text_for_tts)
-        
-        # Split text into chunks of maximum 24 words
-        words = text_for_tts.split()
-        chunks = [' '.join(words[i:i + 24]) for i in range(0, len(words), 24)]
-        
-        logger.info(f"Generating {gen_count} versions for '{speaker_name}': {text_for_tts[:40]}... (Split into {len(chunks)} chunks)")
-        
-        audio_tensors = []
-        final_params = []
-        for gen_idx in range(gen_count):
-            try:
-                # Use base parameters directly
-                modified_exaggeration = params['exaggeration']
-                modified_cfg_weight = params['cfg_weight']
-                modified_temperature = params['temperature']
-                
-                # Generate audio for each chunk and concatenate
-                chunk_audios = []
-                for chunk in chunks:
-                    audio = self.model.generate(
-                        chunk,
-                        audio_prompt_path=voice_path,
-                        exaggeration=modified_exaggeration,
-                        cfg_weight=modified_cfg_weight,
-                        temperature=modified_temperature
-                    )
-                    chunk_audios.append(audio)
-                
-                # Log the source text and parameters used for this generation
-                logger.info(f"  [Gen {gen_idx + 1}] Text: {text_for_tts} | Params: exaggeration={modified_exaggeration}, cfg_weight={modified_cfg_weight}, temperature={modified_temperature}")
+            # Static CFG settings
+            params = {"exaggeration": 0.7, "cfg_weight": 0.5, "temperature": 0.8}
+            
+            # Get the AI-selected preset filename from the map
+            delivery_name = preset_map.get(original_text)
+            voice_path = voice_config.get_voice_path(delivery_name)
+            
+            if not voice_path:
+                # Fallback to the first available file in the voicebank if no delivery specified or found
+                if voice_config.deliveries:
+                    fallback_file = voice_config.deliveries[0]
+                    voice_path = os.path.join(voice_config.voicebank_dir, fallback_file)
+                    logger.warning(f"Delivery '{delivery_name}' not found or not specified. Falling back to: {fallback_file}")
+                else:
+                    logger.error("Critical: No voice files found in diurnal_voicebank and no valid delivery specified.")
+                    voice_path = None
 
-                # Concatenate all chunks for this generation
-                full_audio = torch.cat(chunk_audios, dim=-1)
-                audio_tensors.append(full_audio)
-                
-                final_params.append({
-                    'exaggeration': modified_exaggeration,
-                    'cfg_weight': modified_cfg_weight,
-                    'temperature': modified_temperature
-                })
-                logger.info(f"  Generated version {gen_idx + 1}/{gen_count} (using base cloud params)")
-            except Exception as e:
-                logger.error(f"Failed to generate version {gen_idx + 1}: {e}")
-                final_params.append(None)
-                continue
-        
-        return audio_tensors, final_params
+            # Strip parentheses-enclosed tags from text
+            text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', text).strip()
+            text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
+            
+            words = text_for_tts.split()
+            chunks = [' '.join(words[i:i + 24]) for i in range(0, len(words), 24)]
+            
+            audio_tensors = []
+            final_params = []
+            for gen_idx in range(gen_count):
+                try:
+                    modified_exaggeration = params.get('exaggeration', 0.5)
+                    modified_cfg_weight = params.get('cfg_weight', 0.5)
+                    modified_temperature = params.get('temperature', 0.7)
+                    
+                    if not voice_path:
+                        raise ValueError("No valid voice path available for generation")
+
+                    chunk_audios = []
+                    for chunk in chunks:
+                        audio = self.model.generate(
+                            chunk,
+                            audio_prompt_path=voice_path,
+                            exaggeration=modified_exaggeration,
+                            cfg_weight=modified_cfg_weight,
+                            temperature=modified_temperature
+                        )
+                        chunk_audios.append(audio)
+                    
+                    logger.info(f"  [Gen {gen_idx + 1}] Text: {text_for_tts} | Delivery: {delivery_name} | Params: exaggeration={modified_exaggeration}, cfg_weight={modified_cfg_weight}, temperature={modified_temperature}")
+
+                    full_audio = torch.cat(chunk_audios, dim=-1)
+                    audio_tensors.append(full_audio)
+                    final_params.append({
+                        'exaggeration': modified_exaggeration,
+                        'cfg_weight': modified_cfg_weight,
+                        'temperature': modified_temperature,
+                        'delivery': delivery_name
+                    })
+                except Exception as e:
+                    logger.error(f"Failed to generate version {gen_idx + 1} for text '{text[:20]}...': {e}")
+                    final_params.append(None)
+                    continue
+            
+            batch_results.append((audio_tensors, final_params))
+            
+        return batch_results
 
 # ==================== FILE HANDLER ====================
 
 def save_audio_file(audio_tensor: torch.Tensor, segment: Dict, gen_idx: int, 
                     sample_rate: int, output_dir: str) -> Optional[str]:
-    """Save audio tensor to WAV file with naming convention."""
     try:
         os.makedirs(output_dir, exist_ok=True)
         
@@ -415,7 +388,8 @@ def save_audio_file(audio_tensor: torch.Tensor, segment: Dict, gen_idx: int,
         gen_padded = str(gen_idx + 1).zfill(2)
         
         if segment['type'] == 'dialogue':
-            speaker_name = segment['speaker'].replace(' ', '_')
+            # Since there's only one character, we use "Diurnal" as the speaker name in filename
+            speaker_name = "Diurnal"
             text_part = truncate_text(segment['text'])
             filename = f"{seq_padded}-{gen_padded}_{speaker_name}_{text_part}.wav"
         else:  # sfx
@@ -424,22 +398,20 @@ def save_audio_file(audio_tensor: torch.Tensor, segment: Dict, gen_idx: int,
         
         filepath = os.path.join(output_dir, filename)
         
-        # Ensure tensor is 2D [channels, time]
         if audio_tensor.ndim == 1:
             audio_tensor = audio_tensor.unsqueeze(0)
         
         ta.save(filepath, audio_tensor.cpu(), sample_rate)
         logger.info(f"Saved: {filename}")
         
-        # Log to script map
         log_to_script_map({
-            'id': f"{seq_padded}_{'dia' if segment['type'] == 'dialogue' else 'sfx'}_{gen_padded}_{segment.get('speaker', 'N/A').replace(' ', '_')}",
+            'id': f"{seq_padded}_{'dia' if segment['type'] == 'dialogue' else 'sfx'}_{gen_padded}_Diurnal",
             'filename': filename,
             'text': segment.get('text', segment.get('sfx_description', '')),
-            'speaker': segment.get('speaker', 'N/A'),
+            'speaker': 'Diurnal',
             'sequence': segment['sequence'],
             'gen_idx': gen_idx + 1,
-            'params': None # Params are handled in the main loop for dialogue
+            'params': None 
         }, os.path.join(output_dir, "script.json"))
         
         return filepath
@@ -451,7 +423,7 @@ def save_audio_file(audio_tensor: torch.Tensor, segment: Dict, gen_idx: int,
 # ==================== MAIN ORCHESTRATION ====================
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate audio from script with dialogue and SFX.")
+    parser = argparse.ArgumentParser(description="Generate audio from script for Diurnal voicebank.")
     parser.add_argument("script_path", help="Path to script file (.txt)")
     parser.add_argument("--gen-count", "-c", type=int, default=DEFAULT_GENERATION_COUNT,
                        help=f"Number of versions to generate per segment (default: {DEFAULT_GENERATION_COUNT})")
@@ -466,7 +438,6 @@ def main():
     logger.info(f"Generation count: {args.gen_count}")
     logger.info(f"Output directory: {args.output_dir}")
     
-    # Parse script
     try:
         segments = parse_script(args.script_path)
     except Exception as e:
@@ -477,7 +448,6 @@ def main():
         logger.error("No segments found in script.")
         sys.exit(1)
     
-    # Separate dialogue and SFX segments
     dialogue_segments = [s for s in segments if s['type'] == 'dialogue']
     sfx_segments_to_process = [s for s in segments if s['type'] == 'sfx']
     
@@ -486,78 +456,72 @@ def main():
     total_files = 0
     failed_count = 0
     
-    # ==================== PASS 1: PROCESS DIALOGUE WITH CHATTERBOX ====================
     logger.info("=" * 60)
     logger.info("PASS 1: Processing dialogue segments (Chatterbox)")
     logger.info("=" * 60)
     
     dialogue_gen = DialogueGenerator(api_key=args.apikey)
     
-    for segment in dialogue_segments:
+    batch_size = 20
+    for i in range(0, len(dialogue_segments), batch_size):
+        batch = dialogue_segments[i : i + batch_size]
         try:
-            audio_tensors, final_params = dialogue_gen.generate(segment, args.gen_count)
+            batch_results = dialogue_gen.generate_batch(batch, args.gen_count)
             sample_rate = dialogue_gen.model.sr
             
-            # Save generated audio files
-            for gen_idx, audio_tensor in enumerate(audio_tensors):
-                filepath = save_audio_file(audio_tensor, segment, gen_idx, sample_rate, args.output_dir)
-                
-                # Update the log entry with actual params
-                if filepath:
-                    seq_padded = str(segment['sequence']).zfill(4)
-                    gen_padded = str(gen_idx + 1).zfill(2)
-                    speaker_name = segment['speaker'].replace(' ', '_')
-                    asset_id = f"{seq_padded}_dia_{gen_padded}_{speaker_name}"
-                    
-                    log_to_script_map({
-                        'id': asset_id,
-                        'params': final_params[gen_idx]
-                    }, os.path.join(args.output_dir, "script.json"))
-                if filepath:
-                    total_files += 1
-                    
-                    # Log metadata
-                    filename = os.path.basename(filepath)
-                    duration = len(AudioSegment.from_file(filepath)) / 1000.0
-                    
-                    # Get the specific CFG values for this generation index
-                    gen_params = final_params[gen_idx]
-                    
-                    metadata_entry = {
-                        "filename": filename,
-                        "transcription": segment['text'],
-                        "duration": duration,
-                        "exaggeration": gen_params['exaggeration'] if gen_params else None,
-                        "cfg_weight": gen_params['cfg_weight'] if gen_params else None,
-                        "temperature": gen_params['temperature'] if gen_params else None
-                    }
-                    
-                    metadata_path = os.path.join(args.output_dir, "generation_metadata.json")
-                    metadata = []
-                    if os.path.exists(metadata_path):
-                        with open(metadata_path, "r") as f:
-                            try:
-                                metadata = json.load(f)
-                            except json.JSONDecodeError:
-                                metadata = []
-                    
-                    metadata.append(metadata_entry)
-                    with open(metadata_path, "w") as f:
-                        json.dump(metadata, f, indent=4)
-                else:
-                    failed_count += 1
+            for segment, (audio_tensors, final_params) in zip(batch, batch_results):
+                for gen_idx, audio_tensor in enumerate(audio_tensors):
+                    filepath = save_audio_file(audio_tensor, segment, gen_idx, sample_rate, args.output_dir)
+                    if filepath:
+                        seq_padded = str(segment['sequence']).zfill(4)
+                        gen_padded = str(gen_idx + 1).zfill(2)
+                        asset_id = f"{seq_padded}_dia_{gen_padded}_Diurnal"
+                        
+                        log_to_script_map({
+                            'id': asset_id,
+                            'params': final_params[gen_idx] if gen_idx < len(final_params) else None
+                        }, os.path.join(args.output_dir, "script.json"))
+
+                        total_files += 1
+                        
+                        filename = os.path.basename(filepath)
+                        duration = len(AudioSegment.from_file(filepath)) / 1000.0
+                        
+                        gen_params = final_params[gen_idx] if gen_idx < len(final_params) else None
+                        
+                        metadata_entry = {
+                            "filename": filename,
+                            "transcription": segment['text'],
+                            "duration": duration,
+                            "exaggeration": gen_params['exaggeration'] if gen_params else None,
+                            "cfg_weight": gen_params['cfg_weight'] if gen_params else None,
+                            "temperature": gen_params['temperature'] if gen_params else None,
+                            "delivery": gen_params['delivery'] if gen_params else None
+                        }
+                        
+                        metadata_path = os.path.join(args.output_dir, "generation_metadata.json")
+                        metadata = []
+                        if os.path.exists(metadata_path):
+                            with open(metadata_path, "r") as f:
+                                try:
+                                    metadata = json.load(f)
+                                except json.JSONDecodeError:
+                                    metadata = []
+                        
+                        metadata.append(metadata_entry)
+                        with open(metadata_path, "w") as f:
+                            json.dump(metadata, f, indent=4)
+                    else:
+                        failed_count += 1
         
         except Exception as e:
-            logger.error(f"Failed to process dialogue segment {segment['sequence']}: {e}")
-            failed_count += 1
+            logger.error(f"Failed to process dialogue batch starting at index {i}: {e}")
+            failed_count += len(batch)
             continue
     
     logger.info(f"Dialogue pass complete. Generated {total_files} files, {failed_count} failed.")
-    
-    # Unload Chatterbox to free VRAM
     dialogue_gen.unload()
     
-    # ==================== EXPORT SFX TASKS ====================
     if sfx_segments_to_process:
         sfx_tasks_path = os.path.join(args.output_dir, "sfx_tasks.json")
         os.makedirs(args.output_dir, exist_ok=True)
@@ -577,7 +541,6 @@ def main():
         except Exception as e:
             logger.error(f"Failed to export SFX tasks: {e}")
 
-    # ==================== SUMMARY ====================
     logger.info("=" * 60)
     logger.info(f"Generation complete!")
     logger.info(f"Total dialogue files generated: {total_files}")
