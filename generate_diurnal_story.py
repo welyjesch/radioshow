@@ -365,8 +365,7 @@ class DialogueGenerator:
                             audio_prompt_path=voice_path,
                             exaggeration=modified_exaggeration,
                             cfg_weight=modified_cfg_weight,
-                            temperature=modified_temperature,
-                            seed=1337
+                            temperature=modified_temperature
                         )
                         chunk_audios.append(audio)
                     
