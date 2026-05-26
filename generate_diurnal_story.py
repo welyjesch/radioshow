@@ -107,6 +107,7 @@ def log_to_script_map(entry, map_path):
 
 # Initialize diurnal voice config
 voice_config = DiurnalVoiceConfig()
+GENERATION_LOG_PATH = os.path.join(OUTPUT_DIR, "generation_log.json")
 
 def sanitize_filename(text, max_length=16):
     """Convert text to safe filename."""
@@ -256,20 +257,25 @@ def parse_script(script_path: str) -> List[Dict]:
         
         speaker_match = re.match(r'^\[([A-Za-z0-9_ \-]+)\]\s*(.*)', line_stripped)
         if speaker_match:
-            if current_block_text_lines and current_speaker_name:
-                seq_counter = process_dialogue_block(current_block_text_lines, current_speaker_name, seq_counter, segments)
-                current_block_text_lines = []
-            
-            current_speaker_name = speaker_match.group(1).upper()
-            remaining_text = speaker_match.group(2).strip()
-            
-            text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', remaining_text).strip()
-            text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
-            
-            if text_for_tts:
-                current_block_text_lines.append(text_for_tts)
-            
-            continue
+            speaker_name = speaker_match.group(1).strip()
+            # Exclude emotive tags and pauses from being detected as speakers
+            if re.match(r'^(sigh|laughs|chuckles|whistles|coughs|pause:?\s*\d*)$', speaker_name.lower()):
+                speaker_match = None # Treat as normal text, not a speaker change
+            else:
+                if current_block_text_lines and current_speaker_name:
+                    seq_counter = process_dialogue_block(current_block_text_lines, current_speaker_name, seq_counter, segments)
+                    current_block_text_lines = []
+                
+                current_speaker_name = speaker_name.upper()
+                remaining_text = speaker_match.group(2).strip()
+                
+                text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', remaining_text).strip()
+                text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
+                
+                if text_for_tts:
+                    current_block_text_lines.append(text_for_tts)
+                
+                continue
         
         if line_stripped:
             current_block_text_lines.append(line_stripped)
@@ -308,6 +314,7 @@ class DialogueGenerator:
         preset_map = get_preset_batch_from_cloud(original_texts, self.voice_config.deliveries, self.api_key)
         
         batch_results = []
+        generation_log = {}
         
         for segment in segments:
             text = segment['text']
@@ -316,8 +323,11 @@ class DialogueGenerator:
             # Static CFG settings
             params = {"exaggeration": 0.7, "cfg_weight": 0.3, "temperature": 0.8}
             
-            # Get the AI-selected preset filename from the map
-            delivery_name = preset_map.get(original_text)
+            # Get the AI-selected preset and transformed text from the map
+            preset_data = preset_map.get(original_text, {})
+            delivery_name = preset_data.get('preset')
+            text_for_tts = preset_data.get('transformed_text', text)
+            
             voice_path = self.voice_config.get_voice_path(delivery_name)
             
             if not voice_path:
@@ -330,8 +340,8 @@ class DialogueGenerator:
                     logger.error("Critical: No voice files found in diurnal_voicebank and no valid delivery specified.")
                     voice_path = None
 
-            # Strip parentheses-enclosed tags from text
-            text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', text).strip()
+            # Ensure we don't have parentheses-enclosed tags in the final TTS text
+            text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', text_for_tts).strip()
             text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
             
             words = text_for_tts.split()
@@ -355,7 +365,8 @@ class DialogueGenerator:
                             audio_prompt_path=voice_path,
                             exaggeration=modified_exaggeration,
                             cfg_weight=modified_cfg_weight,
-                            temperature=modified_temperature
+                            temperature=modified_temperature,
+                            seed=1337
                         )
                         chunk_audios.append(audio)
                     
@@ -374,7 +385,24 @@ class DialogueGenerator:
                     final_params.append(None)
                     continue
             
+            # Log the final construction for this segment
+            seq_key = f"{segment['sequence']}"
+            generation_log[seq_key] = {
+                "filepath": voice_path,
+                "line": text_for_tts,
+                "preset": delivery_name
+            }
+            
             batch_results.append((audio_tensors, final_params))
+            
+        # Save the log to a flat JSON file
+        try:
+            os.makedirs(os.path.dirname(GENERATION_LOG_PATH), exist_ok=True)
+            with open(GENERATION_LOG_PATH, "w", encoding="utf-8") as f:
+                json.dump(generation_log, f, indent=4)
+            logger.info(f"Generation log saved to {GENERATION_LOG_PATH}")
+        except Exception as e:
+            logger.error(f"Failed to save generation log: {e}")
             
         return batch_results
 
