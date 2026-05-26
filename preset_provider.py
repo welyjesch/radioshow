@@ -31,7 +31,7 @@ def get_preset_batch_from_cloud(seq_ids: List[str], text_lines: List[str], voice
         f"Respond ONLY with a JSON object where the keys are the IDs (e.g., \"1\", \"2\") and the values are another object containing:\n"
         f"1. 'preset': The selected preset name (string).\n"
         f"2. 'transformed_text': The line with allowed emotive tags and ellipses inserted.\n"
-        f"3. 'p_pause': A float representing the duration of silence (in seconds) to append after the line (e.g., 0.5, 1.0, or 0.0 for no pause).\n"
+        f"3. 'p_pause': A float representing the duration of silence (in seconds) to append after the line. This value MUST be between 0.5 and 5.0 (e.g., 0.5, 1.0, 5.0), or 0.0 for no pause.\n"
         f"Do not include any conversational text or markdown formatting."
     )
 

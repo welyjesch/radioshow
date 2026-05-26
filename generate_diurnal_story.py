@@ -8,7 +8,7 @@
 #     "librosa==0.11.0",
 #     "s3tokenizer",
 #     "resemble-perth @ git+https://github.com/resemble-ai/Perth.git@master",
-#     "chatterbox-tts @ git+https://github.com/resemble-ai/chatterbox.git",
+#     "chatterbox-turbo-tts @ git+https://github.com/resemble-ai/chatterbox.git",
 #     "nltk",
 #     "beautifulsoup4",
 # ]
@@ -26,7 +26,7 @@ nltk.download('punkt_tab')
 import argparse
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
-from chatterbox.tts import ChatterboxTTS
+from chatterbox.tts_turbo import ChatterboxTurboTTS
 from pydub import AudioSegment
 from preset_provider import get_preset_batch_from_cloud
 
@@ -296,8 +296,8 @@ class DialogueGenerator:
     
     def initialize(self):
         if self.model is None:
-            logger.info("Loading ChatterboxTTS model...")
-            self.model = ChatterboxTTS.from_pretrained(device="cuda")
+            logger.info("Loading ChatterboxTurboTTS model...")
+            self.model = ChatterboxTurboTTS.from_pretrained(device="cuda")
     
     def unload(self):
         if self.model is not None:
@@ -376,6 +376,7 @@ class DialogueGenerator:
                     
                     # Handle post-line pause (p_pause)
                     p_pause = preset_data.get('p_pause', 0.0)
+                    p_pause = max(0.5, min(p_pause, 5.0)) if p_pause > 0 else 0.0
                     if p_pause > 0:
                         sample_rate = self.model.sr
                         silence_duration_samples = int(p_pause * sample_rate)
