@@ -304,7 +304,7 @@ class DialogueGenerator:
         
         original_texts = [s['original_text'] for s in segments]
         # Use preset provider to pick the best voicebank filename
-        preset_map = get_preset_batch_from_cloud(original_texts, self.api_key)
+        preset_map = get_preset_batch_from_cloud(original_texts, self.voice_config.deliveries, self.api_key)
         
         batch_results = []
         
