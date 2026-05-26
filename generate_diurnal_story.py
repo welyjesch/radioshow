@@ -314,7 +314,7 @@ class DialogueGenerator:
             original_text = segment['original_text']
             
             # Static CFG settings
-            params = {"exaggeration": 0.7, "cfg_weight": 0.5, "temperature": 0.8}
+            params = {"exaggeration": 0.7, "cfg_weight": 0.3, "temperature": 0.8}
             
             # Get the AI-selected preset filename from the map
             delivery_name = preset_map.get(original_text)
