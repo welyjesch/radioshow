@@ -380,8 +380,8 @@ class DialogueGenerator:
             for gen_idx in range(gen_count):
                 try:
                     modified_exaggeration = params['exaggeration']
-                    modified_cfg_weight = min(0.3, params['cfg_weight'])
-                    modified_temperature = min(0.3, params['temperature'])
+                    modified_cfg_weight = max(0.3, params['cfg_weight'])
+                    modified_temperature = max(0.3, params['temperature'])
                     
                     chunk_audios = []
                     for chunk in chunks:
