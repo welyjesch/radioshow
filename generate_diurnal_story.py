@@ -160,47 +160,36 @@ def _split_at_punctuation(text, target_words=20, max_words=40):
 
 
 def merge_short_sentences(sentences, min_words=20, max_words=40):
-    """Merge adjacent short sentences until their combined word count exceeds
-    min_words. Then split any resulting chunk that exceeds max_words at the
-    nearest punctuation boundary.
-    
-    Example with min_words=20:
-        A(10 words) + B(12 words) = 22 words > 20 → merged chunk "A B"
-        C(22 words) > 20 → own chunk "C"
-        D(10 words) → own chunk "D" (last, nothing left to merge)
+    """Iteratively join sentences sequentially together until they exceed 
+    min_words (20 words) per batch, then cut off as a separate line.
     """
     if not sentences:
         return []
     
-    # Phase 1: Merge short sentences to meet minimum word count
-    merged = []
-    buffer = []
-    buffer_word_count = 0
+    merged_lines = []
+    current_batch = []
+    current_word_count = 0
     
     for sentence in sentences:
-        sentence_word_count = len(sentence.split())
-        buffer.append(sentence)
-        buffer_word_count += sentence_word_count
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+            
+        words = sentence.split()
+        sentence_word_count = len(words)
         
-        # Flush when accumulated words exceed the minimum threshold
-        if buffer_word_count > min_words:
-            merged.append(' '.join(buffer))
-            buffer = []
-            buffer_word_count = 0
-    
-    # Flush any remaining sentences in the buffer
-    if buffer:
-        merged.append(' '.join(buffer))
-    
-    # Phase 2: Split any chunk exceeding max_words at punctuation
-    final = []
-    for chunk in merged:
-        if len(chunk.split()) > max_words:
-            final.extend(_split_at_punctuation(chunk, min_words, max_words))
-        else:
-            final.append(chunk)
-    
-    return final
+        current_batch.append(sentence)
+        current_word_count += sentence_word_count
+        
+        if current_word_count > min_words:
+            merged_lines.append(' '.join(current_batch))
+            current_batch = []
+            current_word_count = 0
+            
+    if current_batch:
+        merged_lines.append(' '.join(current_batch))
+        
+    return merged_lines
 
 
 # ==================== SCRIPT PARSER ====================
@@ -213,9 +202,13 @@ def process_dialogue_block(lines, speaker, seq_counter, segments):
     # statistical boundaries which produces incoherent phrase fragments.
     all_sentences = []
     for individual_line in lines:
-        stripped = individual_line.strip()
-        if stripped:
-            all_sentences.extend(split_sentences(stripped))
+        # Strip brackets [.*?] and parentheses (.*?) from individual line
+        cleaned_line = re.sub(r'\[.*?\]', '', individual_line)
+        cleaned_line = re.sub(r'\s*\([^)]+\)\s*', ' ', cleaned_line)
+        cleaned_line = re.sub(r'\s+', ' ', cleaned_line).strip()
+        
+        if cleaned_line:
+            all_sentences.extend(split_sentences(cleaned_line))
     
     # Merge short sentences to prevent TTS hallucination on short inputs,
     # and split oversized chunks at punctuation boundaries.
@@ -223,18 +216,21 @@ def process_dialogue_block(lines, speaker, seq_counter, segments):
     
     for line_text in merged_chunks:
         if line_text:
-            seq_counter += 1
-            clean_sentence = re.sub(r'\[.*?\]', '', line_text).strip()
-            clean_sentence = re.sub(r'\s+', ' ', clean_sentence)
+            # Clean sentence is already clean of brackets and parentheses, but do a final pass for safety
+            clean_sentence = re.sub(r'\[.*?\]', '', line_text)
+            clean_sentence = re.sub(r'\s*\([^)]+\)\s*', ' ', clean_sentence)
+            clean_sentence = re.sub(r'\s+', ' ', clean_sentence).strip()
             
-            segments.append({
-                'type': 'dialogue',
-                'sequence': seq_counter,
-                'speaker': speaker,
-                'text': clean_sentence,
-                'original_text': line_text,
-                'explicit_emotion': None
-            })
+            if clean_sentence:
+                seq_counter += 1
+                segments.append({
+                    'type': 'dialogue',
+                    'sequence': seq_counter,
+                    'speaker': speaker,
+                    'text': clean_sentence,
+                    'original_text': clean_sentence,
+                    'explicit_emotion': None
+                })
     return seq_counter
 
 def parse_script(script_path: str) -> List[Dict]:
@@ -287,12 +283,8 @@ def parse_script(script_path: str) -> List[Dict]:
             current_speaker_name = speaker_match.group(1).upper()
             remaining_text = speaker_match.group(2).strip()
             
-            # Remove parenthesized content for TTS
-            text_for_tts = re.sub(r'\s*\([^)]+\)\s*', ' ', remaining_text).strip()
-            text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
-            
-            if text_for_tts:
-                current_block_text_lines.append(text_for_tts)
+            if remaining_text:
+                current_block_text_lines.append(remaining_text)
             
             continue
         
