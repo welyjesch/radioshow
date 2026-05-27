@@ -320,7 +320,7 @@ class DialogueGenerator:
             self.model = None
         torch.cuda.empty_cache()
     
-    def generate_batch(self, segments: List[Dict], gen_count: int) -> List[Tuple[List[torch.Tensor], List[dict]]]:
+    def generate_batch(self, segments: List[Dict], gen_count: int) -> List[Tuple[List[torch.Tensor], List[dict], List[str]]]:
         """Generate audio for a batch of dialogue segments."""
         self.initialize()
         
@@ -343,6 +343,7 @@ class DialogueGenerator:
                 preset_names = []
             
             voice_path = None
+            selected_preset = None
             if preset_names:
                 selected_preset = get_best_preset(original_text, preset_names, self.api_key)
                 if selected_preset:
@@ -353,6 +354,7 @@ class DialogueGenerator:
                     fallback_path = os.path.join(diurnal_voicebank_dir, preset_names[0])
                     logger.warning(f"Voice file '{voice_path}' not found. Falling back to default: '{fallback_path}'")
                     voice_path = fallback_path
+                    selected_preset = preset_names[0]
                 else:
                     logger.error(f"Critical: Resolved voice path is invalid or missing: '{voice_path}'.")
 
@@ -369,14 +371,20 @@ class DialogueGenerator:
             
             audio_tensors = []
             final_params = []
+            presets_used = []
             for gen_idx in range(gen_count):
                 try:
                     modified_exaggeration = min(0.9, params['exaggeration'])
                     modified_cfg_weight = max(0.7, params['cfg_weight'])
                     modified_temperature = max(0.1, params['temperature'])
 
+                    # Generate silence tensors
+                    sr = self.model.sr
+                    silence_1s = torch.zeros((1, sr))
+                    silence_05s = torch.zeros((1, int(sr * 0.5)))
+
                     chunk_audios = []
-                    for chunk in chunks:
+                    for i, chunk in enumerate(chunks):
                         audio = self.model.generate(
                             chunk,
                             audio_prompt_path=voice_path,
@@ -384,6 +392,17 @@ class DialogueGenerator:
                             cfg_weight=modified_cfg_weight,
                             temperature=modified_temperature
                         )
+                        
+                        # Ensure audio is 2D [channels, time]
+                        if audio.ndim == 1:
+                            audio = audio.unsqueeze(0)
+                            
+                        # Add 1s silence before the first chunk, 0.5s before subsequent chunks
+                        if i == 0:
+                            chunk_audios.append(silence_1s)
+                        else:
+                            chunk_audios.append(silence_05s)
+                            
                         chunk_audios.append(audio)
                     
                     # Log the source text and parameters used for this generation
@@ -396,12 +415,14 @@ class DialogueGenerator:
                         'cfg_weight': modified_cfg_weight,
                         'temperature': modified_temperature
                     })
+                    presets_used.append(selected_preset)
                 except Exception as e:
                     logger.error(f"Failed to generate version {gen_idx + 1} for text '{text[:20]}...': {e}")
                     final_params.append(None)
+                    presets_used.append(None)
                     continue
             
-            batch_results.append((audio_tensors, final_params))
+            batch_results.append((audio_tensors, final_params, presets_used))
             
         return batch_results
 
@@ -500,11 +521,11 @@ def main():
     for i in range(0, len(dialogue_segments), batch_size):
         batch = dialogue_segments[i : i + batch_size]
         try:
-            # generate_batch returns a list of (audio_tensors, final_params) for each segment in the batch
+            # generate_batch returns a list of (audio_tensors, final_params, presets_used) for each segment in the batch
             batch_results = dialogue_gen.generate_batch(batch, args.gen_count)
             sample_rate = dialogue_gen.model.sr
             
-            for segment, (audio_tensors, final_params) in zip(batch, batch_results):
+            for segment, (audio_tensors, final_params, presets_used) in zip(batch, batch_results):
                 # Save generated audio files
                 for gen_idx, audio_tensor in enumerate(audio_tensors):
                     filepath = save_audio_file(audio_tensor, segment, gen_idx, sample_rate, args.output_dir)
@@ -533,6 +554,7 @@ def main():
                             "filename": filename,
                             "transcription": segment['text'],
                             "duration": duration,
+                            "preset": presets_used[gen_idx] if gen_idx < len(presets_used) else None,
                             "exaggeration": gen_params['exaggeration'] if gen_params else None,
                             "cfg_weight": gen_params['cfg_weight'] if gen_params else None,
                             "temperature": gen_params['temperature'] if gen_params else None
