@@ -8,7 +8,7 @@
 #     "librosa==0.11.0",
 #     "s3tokenizer",
 #     "resemble-perth @ git+https://github.com/resemble-ai/Perth.git@master",
-#     "chatterbox-turbo-tts @ git+https://github.com/resemble-ai/chatterbox.git",
+#     "chatterbox-tts @ git+https://github.com/resemble-ai/chatterbox.git",
 #     "nltk",
 #     "beautifulsoup4",
 # ]
