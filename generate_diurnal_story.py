@@ -381,13 +381,13 @@ class DialogueGenerator:
             for gen_idx in range(gen_count):
                 try:
                     modified_exaggeration = min(0.9, params['exaggeration'])
-                    modified_cfg_weight = max(0.7, params['cfg_weight'])
-                    modified_temperature = max(0.1, params['temperature'])
+                    modified_cfg_weight = max(0.5, params['cfg_weight'])
+                    modified_temperature = max(0.5, params['temperature'])
 
                     # Generate silence tensors
                     sr = self.model.sr
-                    silence_1s = torch.zeros((1, sr))
-                    silence_05s = torch.zeros((1, int(sr * 0.5)))
+                    silence_2s = torch.zeros((1, sr*2))
+                    silence_1s = torch.zeros((1, int(sr)))
 
                     chunk_audios = []
                     for i, chunk in enumerate(chunks):
@@ -405,9 +405,9 @@ class DialogueGenerator:
                             
                         # Add 1s silence before the first chunk, 0.5s before subsequent chunks
                         if i == 0:
-                            chunk_audios.append(silence_1s)
+                            chunk_audios.append(silence_2s)
                         else:
-                            chunk_audios.append(silence_05s)
+                            chunk_audios.append(silence_1s)
                             
                         chunk_audios.append(audio)
                     
