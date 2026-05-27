@@ -366,34 +366,26 @@ class DialogueGenerator:
         final_params = []
         for gen_idx in range(gen_count):
             try:
-                # Use base parameters directly
-                modified_exaggeration = params['exaggeration']
-                modified_cfg_weight = params['cfg_weight']
-                modified_temperature = params['temperature']
-                
                 # Generate audio for each chunk and concatenate
                 chunk_audios = []
                 for chunk in chunks:
                     audio = self.model.generate(
                         chunk,
                         audio_prompt_path=voice_path,
-                        exaggeration=modified_exaggeration,
-                        cfg_weight=modified_cfg_weight,
-                        temperature=modified_temperature
                     )
                     chunk_audios.append(audio)
                 
                 # Log the source text and parameters used for this generation
-                logger.info(f"  [Gen {gen_idx + 1}] Text: {text_for_tts} | Params: exaggeration={modified_exaggeration}, cfg_weight={modified_cfg_weight}, temperature={modified_temperature}")
+                logger.info(f"  [Gen {gen_idx + 1}] Text: {text_for_tts}")
 
                 # Concatenate all chunks for this generation
                 full_audio = torch.cat(chunk_audios, dim=-1)
                 audio_tensors.append(full_audio)
                 
                 final_params.append({
-                    'exaggeration': modified_exaggeration,
-                    'cfg_weight': modified_cfg_weight,
-                    'temperature': modified_temperature
+                    'exaggeration': params['exaggeration'],
+                    'cfg_weight': params['cfg_weight'],
+                    'temperature': params['temperature']
                 })
                 logger.info(f"  Generated version {gen_idx + 1}/{gen_count} (using base cloud params)")
             except Exception as e:

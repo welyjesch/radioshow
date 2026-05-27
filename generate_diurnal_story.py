@@ -323,11 +323,11 @@ class DialogueGenerator:
             # Static CFG settings
             params = {"exaggeration": 1.0, "cfg_weight": 0.2, "temperature": 0.1}
             
-            # Get the AI-selected preset and transformed text from the map using sequence ID
+            # Get the AI-selected preset from the map using sequence ID
             seq_key = str(segment['sequence'])
             preset_data = preset_map.get(seq_key, {})
             delivery_name = preset_data.get('preset')
-            text_for_tts = preset_data.get('transformed_text', text)
+            text_for_tts = text
             
             voice_path = self.voice_config.get_voice_path(delivery_name)
             
@@ -352,10 +352,6 @@ class DialogueGenerator:
             final_params = []
             for gen_idx in range(gen_count):
                 try:
-                    modified_exaggeration = params.get('exaggeration', 0.5)
-                    modified_cfg_weight = params.get('cfg_weight', 0.5)
-                    modified_temperature = params.get('temperature', 0.7)
-                    
                     if not voice_path:
                         raise ValueError("No valid voice path available for generation")
 
@@ -364,13 +360,10 @@ class DialogueGenerator:
                         audio = self.model.generate(
                             chunk,
                             audio_prompt_path=voice_path,
-                            exaggeration=modified_exaggeration,
-                            cfg_weight=modified_cfg_weight,
-                            temperature=modified_temperature
                         )
                         chunk_audios.append(audio)
                     
-                    logger.info(f"  [Gen {gen_idx + 1}] Text: {text_for_tts} | Delivery: {delivery_name} | Params: exaggeration={modified_exaggeration}, cfg_weight={modified_cfg_weight}, temperature={modified_temperature}")
+                    logger.info(f"  [Gen {gen_idx + 1}] Text: {text_for_tts} | Delivery: {delivery_name}")
 
                     full_audio = torch.cat(chunk_audios, dim=-1)
                     
@@ -385,9 +378,6 @@ class DialogueGenerator:
 
                     audio_tensors.append(full_audio)
                     final_params.append({
-                        'exaggeration': modified_exaggeration,
-                        'cfg_weight': modified_cfg_weight,
-                        'temperature': modified_temperature,
                         'delivery': delivery_name,
                         'p_pause': p_pause
                     })
