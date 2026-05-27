@@ -61,3 +61,49 @@ def get_best_preset(text_line: str, voice_presets: List[str], api_key: str) -> s
     fallback_preset = "neutral.mp3" if "neutral.mp3" in voice_presets else (voice_presets[0] if voice_presets else "")
     logger.warning(f"Fallback to preset: {fallback_preset}")
     return fallback_preset
+
+
+def sentence_expander(text_line: str, full_context: str, api_key: str) -> str:
+    """
+    Queries the cloud model via Ollama API to expand the sentence by filling in context
+    or additional expressions in the line.
+    """
+    url = "https://ollama.com/api/generate"
+    
+    prompt = (
+        f"Expand the following short sentence by filling in context or additional expressions in the line. "
+        f"Make it longer, but preserve the original meaning and core sentiment.\n\n"
+        f"Full context line: \"{full_context}\"\n"
+        f"Target sentence to expand: \"{text_line}\"\n\n"
+        f"Instruct the provider to ONLY add or modify the target sentence being processed/expanded, preserving the rest of the context if necessary, but the final response should only be the expanded version of the target sentence.\n"
+        f"Respond ONLY with a JSON object containing a single key 'expanded' whose value is the expanded sentence. "
+        f"Do not include any conversational text or markdown formatting."
+    )
+
+    payload = {
+        "model": "gemma4:31b-cloud",
+        "prompt": prompt,
+        "stream": False,
+        "format": "json"
+    }
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+        
+        response_data = json.loads(result.get("response", "{}"))
+        expanded_sentence = response_data.get("expanded", "")
+        if expanded_sentence:
+            logger.info(f"Expanded sentence from '{text_line}' to '{expanded_sentence}'")
+            return expanded_sentence
+    except Exception as e:
+        logger.error(f"Error querying cloud model for sentence expansion: {e}")
+        
+    return text_line
+

@@ -29,7 +29,7 @@ from typing import Dict, List, Tuple, Optional
 from chatterbox.tts import ChatterboxTTS
 from pydub import AudioSegment
 from cloud_cfg_provider import get_cfg_settings_batch_from_cloud
-from preset_provider import get_best_preset
+from preset_provider import get_best_preset, sentence_expander
 
 DEFAULT_VOICE_KEY = "default_voice"
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "generated_audio")
@@ -333,6 +333,12 @@ class DialogueGenerator:
         for segment in segments:
             speaker_name = segment['speaker']
             text = segment['text']
+            
+            if len(text.split()) < 10:
+                logger.info(f"Line '{text}' has less than 10 words. Expanding...")
+                text = sentence_expander(text, text, self.api_key)
+                segment['text'] = text
+                
             original_text = segment['original_text']
             
             # Get voice path by querying preset_provider to select the best preset from files in diurnal_voicebank
