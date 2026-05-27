@@ -159,7 +159,7 @@ def _split_at_punctuation(text, target_words=20, max_words=40):
     return chunks if chunks else [text]
 
 
-def merge_short_sentences(sentences, min_words=20, max_words=40):
+def merge_short_sentences(sentences, min_words=10, max_words=40):
     """Iteratively join sentences sequentially together until they exceed 
     min_words (20 words) per batch, then cut off as a separate line.
     """
@@ -371,10 +371,11 @@ class DialogueGenerator:
             final_params = []
             for gen_idx in range(gen_count):
                 try:
-                    modified_exaggeration = params['exaggeration']
-                    modified_cfg_weight = max(0.3, params['cfg_weight'])
-                    modified_temperature = max(0.3, params['temperature'])
-                    
+                    modified_exaggeration = min(1.5,params['exaggeration'])
+                    modified_cfg_weight = min(0.2, params['cfg_weight'])
+                    modified_temperature = max(0.1, params['temperature'])
+                    modified_temperature = min(0.5, params['temperature'])
+
                     chunk_audios = []
                     for chunk in chunks:
                         audio = self.model.generate(
